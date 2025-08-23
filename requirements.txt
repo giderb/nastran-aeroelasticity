@@ -1,1 +1,20 @@
-.
+# Core dependencies for NASTRAN aeroelasticity analysis
+matplotlib
+numpy
+pyNastran
+pandas
+
+
+# Enhanced plotting and visualization
+#mpl_toolkits  # Part of matplotlib
+
+# Data export capabilities
+openpyxl  # For Excel export
+scipy     # For scientific computations
+
+# Optional: Enhanced GUI styling
+# pillow>=8.0.0  # For image handling in GUI
+
+# Development and testing
+pytest
+pytest-cov

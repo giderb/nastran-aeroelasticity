@@ -27,3 +27,4 @@ env
 .coverage
 junit
 flake-report
+/.idea
