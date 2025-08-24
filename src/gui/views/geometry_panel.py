@@ -67,21 +67,21 @@ class GeometryPanel:
             rb.grid(row=0, column=i, padx=10, pady=5)
             
         # Dimensions frame
-        dim_frame = ttk.LabelFrame(basic_frame, text="Dimensions (m)", padding=10)
+        dim_frame = ttk.LabelFrame(basic_frame, text="Dimensions (mm)", padding=10)
         dim_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        # Length, width, chord
-        self.length_entry = LabeledEntry(dim_frame, "Length:", is_positive_float, width=15)
-        self.length_entry.set("1.0")
+        # Length, width, thickness
+        self.length_entry = LabeledEntry(dim_frame, "Length (a):", is_positive_float, width=15)
+        self.length_entry.set("500.0")
         self.length_entry.pack(anchor=tk.W, pady=2)
         
-        self.width_entry = LabeledEntry(dim_frame, "Width:", is_positive_float, width=15)
-        self.width_entry.set("1.0")
+        self.width_entry = LabeledEntry(dim_frame, "Width (b):", is_positive_float, width=15)
+        self.width_entry.set("300.0")
         self.width_entry.pack(anchor=tk.W, pady=2)
         
-        self.chord_entry = LabeledEntry(dim_frame, "Chord:", is_positive_float, width=15)
-        self.chord_entry.set("1.0")
-        self.chord_entry.pack(anchor=tk.W, pady=2)
+        self.thickness_entry = LabeledEntry(dim_frame, "Thickness (h):", is_positive_float, width=15)
+        self.thickness_entry.set("2.0")
+        self.thickness_entry.pack(anchor=tk.W, pady=2)
         
         # Quick geometry buttons
         buttons_frame = ttk.Frame(dim_frame)
@@ -89,7 +89,7 @@ class GeometryPanel:
         
         ttk.Button(buttons_frame, text="Square Panel", command=self.create_square_panel,
                   style='Modern.TButton').pack(side=tk.LEFT, padx=2)
-        ttk.Button(buttons_frame, text="NACA Example", command=self.create_naca_panel,
+        ttk.Button(buttons_frame, text="Aircraft Panel", command=self.create_naca_panel,
                   style='Modern.TButton').pack(side=tk.LEFT, padx=2)
         ttk.Button(buttons_frame, text="Reset", command=self.reset_geometry,
                   style='Warning.TButton').pack(side=tk.LEFT, padx=2)
@@ -237,8 +237,8 @@ class GeometryPanel:
     def update_corner_points_from_dimensions(self, *args):
         """Update corner points based on dimension changes."""
         try:
-            length = float(self.length_entry.get()) if self.length_entry.get() else 1.0
-            width = float(self.width_entry.get()) if self.width_entry.get() else 1.0
+            length = (float(self.length_entry.get()) if self.length_entry.get() else 500.0) / 1000.0  # Convert mm to m
+            width = (float(self.width_entry.get()) if self.width_entry.get() else 300.0) / 1000.0  # Convert mm to m
             
             # Update corner points table
             self.points_table.clear()
@@ -262,8 +262,8 @@ class GeometryPanel:
         try:
             n_chord = int(self.n_chord_spinbox.get())
             n_span = int(self.n_span_spinbox.get())
-            length = float(self.length_entry.get()) if self.length_entry.get() else 1.0
-            width = float(self.width_entry.get()) if self.width_entry.get() else 1.0
+            length = (float(self.length_entry.get()) if self.length_entry.get() else 500.0) / 1000.0  # Convert mm to m
+            width = (float(self.width_entry.get()) if self.width_entry.get() else 300.0) / 1000.0  # Convert mm to m
             
             # Calculate mesh quality metrics
             chord_element_size = length / n_chord
@@ -291,17 +291,17 @@ class GeometryPanel:
     def create_square_panel(self):
         """Create a square panel geometry."""
         self.panel_type_var.set("rectangular")
-        self.length_entry.set("1.0")
-        self.width_entry.set("1.0")
-        self.chord_entry.set("1.0")
+        self.length_entry.set("500.0")  # 500mm length
+        self.width_entry.set("500.0")   # 500mm width
+        self.thickness_entry.set("2.0")  # 2mm thickness
         self.update_corner_points_from_dimensions()
         
     def create_naca_panel(self):
-        """Create a NACA-style panel geometry."""
+        """Create a NACA-style panel geometry (Aircraft fuselage panel)."""
         self.panel_type_var.set("rectangular")
-        self.length_entry.set("1.0")  # 1m chord
-        self.width_entry.set("2.0")   # 2m span
-        self.chord_entry.set("1.0")
+        self.length_entry.set("500.0")   # 500mm length
+        self.width_entry.set("300.0")    # 300mm width
+        self.thickness_entry.set("2.0")  # 2mm thickness
         self.n_chord_spinbox.set(20)
         self.n_span_spinbox.set(10)
         self.update_corner_points_from_dimensions()
@@ -386,9 +386,9 @@ class GeometryPanel:
                 'panel_type': self.panel_type_var.get(),
                 'corner_points': corner_points,
                 'dimensions': {
-                    'length': float(self.length_entry.get()) if self.length_entry.get() else 1.0,
-                    'width': float(self.width_entry.get()) if self.width_entry.get() else 1.0,
-                    'chord': float(self.chord_entry.get()) if self.chord_entry.get() else 1.0
+                    'length': (float(self.length_entry.get()) if self.length_entry.get() else 500.0) / 1000.0,  # Convert mm to m
+                    'width': (float(self.width_entry.get()) if self.width_entry.get() else 300.0) / 1000.0,  # Convert mm to m
+                    'thickness': (float(self.thickness_entry.get()) if self.thickness_entry.get() else 2.0) / 1000.0  # Convert mm to m
                 },
                 'mesh_density': {
                     'n_chord': int(self.n_chord_spinbox.get()),
@@ -415,9 +415,9 @@ class GeometryPanel:
             
             # Dimensions
             dimensions = geometry_data.get('dimensions', {})
-            self.length_entry.set(str(dimensions.get('length', 1.0)))
-            self.width_entry.set(str(dimensions.get('width', 1.0)))
-            self.chord_entry.set(str(dimensions.get('chord', 1.0)))
+            self.length_entry.set(str(dimensions.get('length', 0.5) * 1000.0))  # Convert m to mm
+            self.width_entry.set(str(dimensions.get('width', 0.3) * 1000.0))  # Convert m to mm
+            self.thickness_entry.set(str(dimensions.get('thickness', 0.002) * 1000.0))  # Convert m to mm
             
             # Mesh density
             mesh_density = geometry_data.get('mesh_density', {})

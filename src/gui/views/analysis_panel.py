@@ -81,8 +81,32 @@ class AnalysisPanel:
             )
             rb.grid(row=0, column=i, padx=10, pady=5)
             
-        # Solution method frame
-        method_frame = ttk.LabelFrame(params_frame, text="Solution Method", padding=10)
+        # Solver selection frame
+        solver_frame = ttk.LabelFrame(params_frame, text="Flutter Analysis Solver", padding=10)
+        solver_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Solver method selection
+        ttk.Label(solver_frame, text="Primary Solver:", style='Modern.TLabel').grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
+        
+        self.solver_method_var = tk.StringVar(value="auto")
+        solver_combo = ttk.Combobox(solver_frame, textvariable=self.solver_method_var,
+                                   values=["auto", "piston_theory", "doublet_lattice", "nastran"],
+                                   state="readonly", width=15)
+        solver_combo.grid(row=0, column=1, padx=5, pady=2, sticky=tk.W)
+        
+        # Multi-solver comparison option
+        self.multi_solver_var = tk.BooleanVar(value=True)
+        multi_solver_check = ttk.Checkbutton(solver_frame, text="Enable multi-solver comparison",
+                                            variable=self.multi_solver_var)
+        multi_solver_check.grid(row=1, column=0, columnspan=2, sticky=tk.W, padx=5, pady=5)
+        
+        # Solver info button
+        info_btn = ttk.Button(solver_frame, text="Solver Info", command=self.show_solver_info,
+                             style='Modern.TButton')
+        info_btn.grid(row=0, column=2, padx=10, pady=2)
+        
+        # Solution method frame (for NASTRAN compatibility)
+        method_frame = ttk.LabelFrame(params_frame, text="Solution Method (NASTRAN)", padding=10)
         method_frame.pack(fill=tk.X, padx=5, pady=5)
         
         ttk.Label(method_frame, text="Method:", style='Modern.TLabel').grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
@@ -186,7 +210,7 @@ class AnalysisPanel:
         ref_frame = ttk.LabelFrame(solver_frame, text="Reference Parameters", padding=10)
         ref_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        self.ref_chord_entry = LabeledEntry(ref_frame, "Reference Chord (m):", is_positive_float, width=15)
+        self.ref_chord_entry = LabeledEntry(ref_frame, "Reference Chord (mm):", is_positive_float, width=15)
         self.ref_chord_entry.set("1.0")
         self.ref_chord_entry.pack(anchor=tk.W, pady=2)
         
@@ -263,6 +287,40 @@ class AnalysisPanel:
         else:
             messagebox.showinfo("Run Analysis", "Analysis execution not yet implemented")
             
+    def show_solver_info(self):
+        """Show information about available solvers"""
+        info_text = """
+FLUTTER ANALYSIS SOLVERS:
+
+• AUTO - Intelligent solver selection based on flow conditions
+  Recommends best method automatically
+
+• PISTON THEORY (Level 1)
+  - Fast, preliminary analysis
+  - Best for: Supersonic flow (M > 1.2)
+  - Accuracy: Good for thin panels, high speed
+  - Speed: Very fast (~1 second)
+
+• DOUBLET LATTICE (Level 2) 
+  - Moderate accuracy, good performance
+  - Best for: Subsonic/transonic (M < 0.95)
+  - Accuracy: Better than piston theory
+  - Speed: Fast (~10 seconds)
+
+• NASTRAN (Level 3)
+  - High fidelity analysis
+  - Best for: All conditions, final design
+  - Accuracy: Most accurate
+  - Speed: Slow (~minutes)
+
+RECOMMENDATIONS:
+- Preliminary design: Piston Theory or Auto
+- Design validation: Multi-solver comparison
+- Final analysis: NASTRAN
+        """
+        
+        messagebox.showinfo("Solver Information", info_text)
+    
     def get_analysis_data(self) -> dict:
         """Get current analysis parameters."""
         try:
@@ -283,7 +341,9 @@ class AnalysisPanel:
             analysis_data = {
                 'analysis_type': self.analysis_type_var.get(),
                 'aero_theory': self.aero_theory_var.get(),
-                'method': self.method_var.get(),
+                'solver_method': self.solver_method_var.get(),
+            'multi_solver_enabled': self.multi_solver_var.get(),
+            'method': self.method_var.get(),
                 'num_modes': int(self.num_modes_spinbox.get()),
                 'frequency_range': [
                     float(self.freq_min_entry.get()) if self.freq_min_entry.get() else 0.1,

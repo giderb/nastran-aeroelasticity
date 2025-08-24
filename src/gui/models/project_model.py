@@ -31,7 +31,7 @@ class MaterialData:
     density: float = 2700.0  # kg/m³
     youngs_modulus: float = 70e9  # Pa
     poissons_ratio: float = 0.33
-    thickness: float = 0.002  # m
+    thickness: float = 0.002  # m (internal storage in meters)
     
     # For composite materials
     composite_layers: List[Dict] = field(default_factory=list)

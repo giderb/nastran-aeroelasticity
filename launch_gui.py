@@ -33,7 +33,7 @@ missing_packages = []
 for package in required_packages:
     try:
         __import__(package)
-        print(f"✓ {package}")
+        print(f"[OK] {package}")
     except ImportError:
         missing_packages.append(package)
         print(f"✗ {package} (missing)")
@@ -44,7 +44,7 @@ if missing_packages:
     input("Press Enter to exit...")
     sys.exit(1)
 
-print("✓ All dependencies found")
+print("[OK] All dependencies found")
 print("\nStarting application...")
 
 # Import matplotlib early and configure backend
@@ -122,17 +122,45 @@ class PanelFlutterGUI:
                        borderwidth=0,
                        tabmargins=[0, 0, 0, 0])
         
+        # Configure tab styling with consistent dimensions
         style.configure('Modern.TNotebook.Tab',
                        background=self.colors['surface_alt'],
                        foreground=self.colors['text_secondary'],
                        padding=[20, 12, 20, 12],
                        borderwidth=0,
                        focuscolor='none',
-                       font=('Segoe UI', 10))
+                       font=('Segoe UI', 10),
+                       minwidth=0,
+                       width=0,
+                       anchor='center')
         
         style.map('Modern.TNotebook.Tab',
                  background=[('selected', self.colors['surface']),
-                           ('active', '#E5E7EB')])
+                           ('active', '#E5E7EB')],
+                 foreground=[('selected', self.colors['text_primary']),
+                           ('active', self.colors['text_primary'])],
+                 padding=[('selected', [20, 12, 20, 12]),
+                         ('active', [20, 12, 20, 12]),
+                         ('!selected', [20, 12, 20, 12])])
+        
+        # Ensure all tabs have the same height by configuring layout
+        try:
+            style.layout('Modern.TNotebook.Tab', [
+                ('Notebook.tab', {
+                    'sticky': 'nsew', 
+                    'children': [
+                        ('Notebook.padding', {
+                            'side': 'top',
+                            'sticky': 'nsew',
+                            'children': [
+                                ('Notebook.label', {'side': 'left', 'sticky': ''})
+                            ]
+                        })
+                    ]
+                })
+            ])
+        except:
+            pass  # Fallback if layout configuration fails
         
         # Configure frames
         style.configure('Card.TFrame',
@@ -263,10 +291,10 @@ class PanelFlutterGUI:
         
         # Main title with icon-like symbol
         title_frame = tk.Frame(title_container, bg=self.colors['background'])
-        title_frame.pack(expand=True)
+        title_frame.pack(side=tk.LEFT, anchor=tk.W)
         
         # Icon/symbol
-        icon_label = tk.Label(title_frame, text="✈", 
+        icon_label = tk.Label(title_frame, text="🛫",
                              font=('Segoe UI', 32), 
                              fg=self.colors['primary'],
                              bg=self.colors['background'])
@@ -350,16 +378,15 @@ class PanelFlutterGUI:
         dim_content.columnconfigure(1, weight=1)
         
         # Length input with modern styling
-        self.create_modern_input(dim_content, "Length", "m", "1.0", 0)
+        self.create_modern_input(dim_content, "Length", "mm", "500.0", 0)
         self.length_var = self.inputs[-1]['var']
         
         # Width input
-        self.create_modern_input(dim_content, "Width", "m", "1.0", 1)
+        self.create_modern_input(dim_content, "Width", "mm", "300.0", 1)
         self.width_var = self.inputs[-1]['var']
         
-        # Chord input
-        self.create_modern_input(dim_content, "Chord", "m", "1.0", 2)
-        self.chord_var = self.inputs[-1]['var']
+        # Boundary conditions selection  
+        self.create_boundary_conditions_input(dim_content, 2)
         
         # Mesh parameters card
         mesh_card = self.create_card(cards_frame, "🔲 Mesh Parameters", 
@@ -373,8 +400,8 @@ class PanelFlutterGUI:
         mesh_content.columnconfigure(1, weight=1)
         
         # Mesh inputs with spinboxes
-        self.create_modern_spinbox(mesh_content, "Chordwise Elements", 10, 1, 50, 0)
-        self.nchord_var = self.spinboxes[-1]['var']
+        self.create_modern_spinbox(mesh_content, "Lengthwise Elements", 10, 1, 50, 0)
+        self.nlength_var = self.spinboxes[-1]['var']
         
         self.create_modern_spinbox(mesh_content, "Spanwise Elements", 5, 1, 50, 1)
         self.nspan_var = self.spinboxes[-1]['var']
@@ -432,8 +459,6 @@ class PanelFlutterGUI:
             self.length_var = tk.StringVar(value="1.0")
         if not hasattr(self, 'width_var'):
             self.width_var = tk.StringVar(value="0.5")
-        if not hasattr(self, 'thickness_var'):
-            self.thickness_var = tk.StringVar(value="0.001")
         if not hasattr(self, 'density_var'):
             self.density_var = tk.StringVar(value="2700")
         if not hasattr(self, 'youngs_var'):
@@ -473,13 +498,48 @@ class PanelFlutterGUI:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
-        # Bind mousewheel to canvas
+        # Improved mousewheel binding without conflicts
         def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            # Only scroll if the mouse is over this specific canvas
+            if event.widget == canvas or self._widget_in_canvas(event.widget, canvas):
+                canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        # Bind mousewheel directly to canvas and frame - no global bindings
+        canvas.bind("<MouseWheel>", _on_mousewheel)
+        scrollable_frame.bind("<MouseWheel>", _on_mousewheel)
+        
+        # Make sure mousewheel events bubble up to the canvas
+        def bind_mousewheel_to_children(widget):
+            widget.bind("<MouseWheel>", _on_mousewheel)
+            for child in widget.winfo_children():
+                bind_mousewheel_to_children(child)
+        
+        # Bind to existing children and new ones
+        def bind_all_children():
+            try:
+                bind_mousewheel_to_children(scrollable_frame)
+            except:
+                pass
+        scrollable_frame.after(100, bind_all_children)
+        
+        # Store reference to canvas for helper method
+        self._canvas_widgets = getattr(self, '_canvas_widgets', [])
+        self._canvas_widgets.append(canvas)
         
         # Return both frames - main_frame goes to notebook, scrollable_frame is used for content
         return main_frame, scrollable_frame
+    
+    def _widget_in_canvas(self, widget, canvas):
+        """Check if a widget is a child of a canvas"""
+        try:
+            parent = widget.master
+            while parent:
+                if parent == canvas:
+                    return True
+                parent = parent.master
+            return False
+        except:
+            return False
         
     def create_card(self, parent, title, description):
         """Create a modern card widget"""
@@ -550,16 +610,120 @@ class PanelFlutterGUI:
         spinbox.grid(row=row, column=1, sticky=tk.W, pady=8, padx=(0, 10))
         
         self.spinboxes.append({'label': label, 'var': var, 'spinbox': spinbox})
+    
+    def create_boundary_conditions_input(self, parent, row):
+        """Create boundary conditions selection input"""
+        try:
+            # Import boundary conditions
+            from analysis.boundary_conditions import BoundaryCondition, BoundaryConditionManager
+            
+            bc_manager = BoundaryConditionManager()
+            
+            # Label
+            label_widget = tk.Label(parent, text="Boundary Conditions:",
+                                   bg=self.colors['surface'], fg=self.colors['text_primary'],
+                                   font=('Segoe UI', 10))
+            label_widget.grid(row=row, column=0, sticky=tk.W, pady=8, padx=(0, 15))
+            
+            # Get all available boundary conditions
+            bc_options = []
+            bc_descriptions = {}
+            for bc_type, bc_props in bc_manager.get_all_boundary_conditions().items():
+                display_name = f"{bc_type.value} - {bc_props.name}"
+                bc_options.append(display_name)
+                bc_descriptions[display_name] = bc_props
+            
+            # Create combobox
+            self.boundary_conditions = tk.StringVar(value=bc_options[0])  # Default to first option (SSSS)
+            bc_combo = ttk.Combobox(parent, textvariable=self.boundary_conditions,
+                                   values=bc_options, state="readonly", width=25,
+                                   style='Modern.TCombobox')
+            bc_combo.grid(row=row, column=1, columnspan=2, sticky=tk.W+tk.E, pady=8, padx=(0, 10))
+            
+            # Bind selection change to update info
+            bc_combo.bind('<<ComboboxSelected>>', self.on_boundary_condition_changed)
+            
+            # Info label for flutter characteristics
+            self.bc_info_label = tk.Label(parent, text="Medium flutter tendency, good baseline",
+                                         bg=self.colors['surface'], fg=self.colors['text_light'],
+                                         font=('Segoe UI', 9))
+            self.bc_info_label.grid(row=row+1, column=1, columnspan=2, sticky=tk.W, pady=(0, 8), padx=(0, 10))
+            
+            # Initialize info
+            self.on_boundary_condition_changed(None)
+            
+        except ImportError:
+            # Fallback to simple string selection
+            label_widget = tk.Label(parent, text="Boundary Conditions:",
+                                   bg=self.colors['surface'], fg=self.colors['text_primary'],
+                                   font=('Segoe UI', 10))
+            label_widget.grid(row=row, column=0, sticky=tk.W, pady=8, padx=(0, 15))
+            
+            self.boundary_conditions = tk.StringVar(value="SSSS")
+            bc_combo = ttk.Combobox(parent, textvariable=self.boundary_conditions,
+                                   values=["SSSS", "CCCC", "CFFF", "CSSS", "CCSS", "SSSF", "CCCF"], 
+                                   state="readonly", width=15,
+                                   style='Modern.TCombobox')
+            bc_combo.grid(row=row, column=1, sticky=tk.W+tk.E, pady=8, padx=(0, 10))
+            
+            # Unit/info label
+            info_label = tk.Label(parent, text="Standard patterns",
+                                 bg=self.colors['surface'], fg=self.colors['text_light'],
+                                 font=('Segoe UI', 9))
+            info_label.grid(row=row, column=2, sticky=tk.W, pady=8)
+    
+    def on_boundary_condition_changed(self, event):
+        """Handle boundary condition selection change"""
+        try:
+            from analysis.boundary_conditions import BoundaryCondition, BoundaryConditionManager
+            
+            bc_manager = BoundaryConditionManager()
+            selected = self.boundary_conditions.get()
+            
+            if selected and ' - ' in selected:
+                bc_type_str = selected.split(' - ')[0]
+                try:
+                    bc_type = BoundaryCondition(bc_type_str)
+                    bc_props = bc_manager.get_boundary_condition(bc_type)
+                    
+                    if bc_props and hasattr(self, 'bc_info_label'):
+                        info_text = f"{bc_props.flutter_tendency.title()} flutter tendency, stiffness: {bc_props.structural_stiffness:.1f}"
+                        self.bc_info_label.config(text=info_text)
+                        
+                        # Color code based on flutter tendency
+                        if bc_props.flutter_tendency == "high":
+                            self.bc_info_label.config(fg=self.colors['error'])
+                        elif bc_props.flutter_tendency == "low":
+                            self.bc_info_label.config(fg=self.colors['success'])
+                        else:
+                            self.bc_info_label.config(fg=self.colors['text_light'])
+                            
+                except ValueError:
+                    pass
+        except ImportError:
+            pass
+    
+    def get_boundary_condition_code(self):
+        """Extract boundary condition code from GUI selection"""
+        try:
+            selected = getattr(self, 'boundary_conditions', tk.StringVar(value="SSSS")).get()
+            if ' - ' in selected:
+                # Extract code from "SSSS - Simply Supported All Edges" format
+                return selected.split(' - ')[0]
+            else:
+                # Direct code format
+                return selected
+        except:
+            return "SSSS"  # Default fallback
         
     def validate_geometry(self):
         """Validate geometry parameters"""
         try:
-            length = float(self.length_var.get())
-            width = float(self.width_var.get())
-            chord = float(self.chord_var.get())
+            length = float(self.length_var.get()) / 1000.0  # Convert mm to m
+            width = float(self.width_var.get()) / 1000.0  # Convert mm to m
             
-            if length <= 0 or width <= 0 or chord <= 0:
-                messagebox.showerror("Validation Error", "All dimensions must be positive")
+            if length <= 0 or width <= 0:
+                messagebox.showerror("Validation Error", "Length and width must be positive")
                 return
                 
             messagebox.showinfo("Validation", "✅ Geometry parameters are valid!")
@@ -570,10 +734,9 @@ class PanelFlutterGUI:
             
     def reset_geometry(self):
         """Reset geometry to defaults"""
-        self.length_var.set("1.0")
-        self.width_var.set("1.0") 
-        self.chord_var.set("1.0")
-        self.nchord_var.set(10)
+        self.length_var.set("500.0")
+        self.width_var.set("300.0") 
+        self.nlength_var.set(10)
         self.nspan_var.set(5)
         self.status_var.set("🔄 Geometry reset to defaults")
                   
@@ -594,21 +757,50 @@ class PanelFlutterGUI:
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        # Create window that expands with canvas width
+        window_id = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        
+        # Configure canvas to expand scrollable_frame to its width
+        def _configure_canvas(event):
+            canvas.itemconfig(window_id, width=event.width)
+        canvas.bind('<Configure>', _configure_canvas)
+        
         canvas.configure(yscrollcommand=scrollbar.set)
         
         # Pack canvas and scrollbar
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
-        # Bind mousewheel
+        # Improved mousewheel binding without conflicts
         def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            # Only scroll if the mouse is over this specific canvas
+            if event.widget == canvas or self._widget_in_canvas(event.widget, canvas):
+                canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        # Bind mousewheel directly to canvas and frame - no global bindings
+        canvas.bind("<MouseWheel>", _on_mousewheel)
+        scrollable_frame.bind("<MouseWheel>", _on_mousewheel)
+        
+        # Make sure mousewheel events bubble up to the canvas
+        def bind_mousewheel_to_children(widget):
+            widget.bind("<MouseWheel>", _on_mousewheel)
+            for child in widget.winfo_children():
+                bind_mousewheel_to_children(child)
+        
+        # Bind to existing children and new ones
+        def bind_all_children():
+            try:
+                bind_mousewheel_to_children(scrollable_frame)
+            except:
+                pass
+        scrollable_frame.after(100, bind_all_children)
         
         # Create card layout in scrollable frame
         cards_frame = tk.Frame(scrollable_frame, bg=self.colors['background'])
         cards_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Configure cards_frame to expand
+        cards_frame.columnconfigure(0, weight=1)
         
         # Material type selection card
         type_card = self.create_card(cards_frame, "🔍 Material Type Selection", 
@@ -672,10 +864,10 @@ class PanelFlutterGUI:
         
         # Initialize material property variables
         self.density_var = tk.StringVar(value="2700")
-        self.thickness_var = tk.StringVar(value="0.002")
+        self.thickness_var = tk.StringVar(value="2.0")
         
         self.create_property_input(self.basic_content, "Density", "kg/m³", self.density_var, 0)
-        self.create_property_input(self.basic_content, "Thickness", "m", self.thickness_var, 1)
+        self.create_property_input(self.basic_content, "Thickness", "mm", self.thickness_var, 1)
         
         # Isotropic properties card
         self.iso_card = self.create_card(cards_frame, "🔧 Isotropic Properties", 
@@ -747,6 +939,7 @@ class PanelFlutterGUI:
         self.laminate_content = tk.Frame(self.laminate_card, bg=self.colors['surface'])
         self.laminate_content.pack(fill=tk.X, padx=20, pady=15)
         
+        
         # Laminate table header
         header_frame = tk.Frame(self.laminate_content, bg=self.colors['surface_alt'], height=35)
         header_frame.pack(fill=tk.X, pady=(0, 5))
@@ -775,7 +968,7 @@ class PanelFlutterGUI:
                   command=self.add_laminate_layer, style='Success.TButton').pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(button_frame, text="📋 Standard Layups", 
                   command=self.show_standard_layups, style='Secondary.TButton').pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(button_frame, text="📊 Calculate ABD", 
+        ttk.Button(button_frame, text="[CALC] Calculate ABD", 
                   command=self.calculate_abd_matrix, style='Secondary.TButton').pack(side=tk.LEFT)
         
         # Analysis integration card
@@ -893,36 +1086,48 @@ class PanelFlutterGUI:
         """Add a new laminate layer"""
         layer_num = len(self.laminate_layers) + 1
         
-        # Create layer frame
-        layer_frame = tk.Frame(self.layers_frame, bg=self.colors['surface'], relief=tk.FLAT, bd=1)
-        layer_frame.pack(fill=tk.X, pady=2)
+        # Create layer frame using grid layout instead of place
+        layer_frame = tk.Frame(self.layers_frame, bg=self.colors['surface'], relief=tk.FLAT, bd=1, height=35)
+        layer_frame.pack(fill=tk.X, pady=2, padx=5)
+        layer_frame.pack_propagate(False)
+        
+        # Configure grid weights for better proportions
+        layer_frame.columnconfigure(0, weight=0, minsize=50)   # Layer number - fixed narrow
+        layer_frame.columnconfigure(1, weight=3, minsize=200)  # Material - moderate expansion
+        layer_frame.columnconfigure(2, weight=1, minsize=100)  # Thickness - some expansion
+        layer_frame.columnconfigure(3, weight=1, minsize=80)   # Angle - some expansion  
+        layer_frame.columnconfigure(4, weight=0, minsize=60)   # Actions - fixed narrow
         
         # Layer number
         tk.Label(layer_frame, text=str(layer_num), 
-                bg=self.colors['surface'], font=('Segoe UI', 9)).place(x=20, y=8)
+                bg=self.colors['surface'], fg=self.colors['text_primary'],
+                font=('Segoe UI', 9)).grid(row=0, column=0, sticky='ew', padx=5, pady=5)
         
         # Material dropdown
         material_var = tk.StringVar(value="IM7/8552")
         material_combo = ttk.Combobox(layer_frame, textvariable=material_var,
                                     values=["IM7/8552", "Glass/Epoxy", "Kevlar/Epoxy"],
-                                    state="readonly", width=12, font=('Segoe UI', 8))
-        material_combo.place(x=60, y=5)
+                                    state="readonly", font=('Segoe UI', 8))
+        material_combo.grid(row=0, column=1, sticky='ew', padx=5, pady=5)
         
         # Thickness entry
         thickness_var = tk.StringVar(value="0.125")
-        thickness_entry = tk.Entry(layer_frame, textvariable=thickness_var, width=8, font=('Segoe UI', 8))
-        thickness_entry.place(x=185, y=7)
+        thickness_entry = tk.Entry(layer_frame, textvariable=thickness_var, 
+                                 font=('Segoe UI', 8), justify='center')
+        thickness_entry.grid(row=0, column=2, sticky='ew', padx=5, pady=5)
         
         # Angle entry
         angle_var = tk.StringVar(value="0")
-        angle_entry = tk.Entry(layer_frame, textvariable=angle_var, width=6, font=('Segoe UI', 8))
-        angle_entry.place(x=280, y=7)
+        angle_entry = tk.Entry(layer_frame, textvariable=angle_var, 
+                             font=('Segoe UI', 8), justify='center')
+        angle_entry.grid(row=0, column=3, sticky='ew', padx=5, pady=5)
         
         # Delete button
         delete_btn = tk.Button(layer_frame, text="🗑", font=('Segoe UI', 8), 
                               command=lambda: self.delete_laminate_layer(layer_frame),
-                              bg=self.colors['error'], fg='white', bd=0, padx=5)
-        delete_btn.place(x=340, y=5)
+                              bg=self.colors['error'], fg='white', relief=tk.FLAT, 
+                              bd=0, padx=3)
+        delete_btn.grid(row=0, column=4, sticky='ew', padx=5, pady=5)
         
         # Store layer data
         layer_data = {
@@ -951,30 +1156,91 @@ class PanelFlutterGUI:
             
     def show_standard_layups(self):
         """Show standard layup presets"""
-        # Create popup window
+        # Create popup window with better dimensions
         popup = tk.Toplevel(self.root)
         popup.title("Standard Layups")
-        popup.geometry("400x300")
+        popup.geometry("500x400")
         popup.configure(bg=self.colors['background'])
+        popup.resizable(True, True)
         
-        tk.Label(popup, text="Select Standard Layup:",
+        # Center the window
+        popup.transient(self.root)
+        popup.grab_set()
+        
+        # Main container with padding
+        main_frame = tk.Frame(popup, bg=self.colors['background'])
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Title
+        title_label = tk.Label(main_frame, text="Select Standard Layup:",
                 bg=self.colors['background'], fg=self.colors['text_primary'],
-                font=('Segoe UI', 12, 'bold')).pack(pady=10)
+                font=('Segoe UI', 14, 'bold'))
+        title_label.pack(pady=(0, 20))
+        
+        # Subtitle
+        subtitle_label = tk.Label(main_frame, text="Choose from commonly used composite layups:",
+                bg=self.colors['background'], fg=self.colors['text_secondary'],
+                font=('Segoe UI', 10))
+        subtitle_label.pack(pady=(0, 15))
+        
+        # Scrollable frame for layups
+        canvas = tk.Canvas(main_frame, bg=self.colors['background'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.colors['background'])
+        
+        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        window_id = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        
+        def _configure_canvas(event):
+            canvas.itemconfig(window_id, width=event.width)
+        canvas.bind('<Configure>', _configure_canvas)
+        
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
         
         layups = [
-            ("Quasi-Isotropic", "[0/45/-45/90]s"),
-            ("Cross-Ply", "[0/90]4s"),
-            ("Angle-Ply", "[±45]4s"),
-            ("Symmetric", "[0/45/90/-45]s"),
-            ("Unidirectional", "[0]8")
+            ("Quasi-Isotropic", "[0/45/-45/90]s", "Balanced properties in all directions"),
+            ("Cross-Ply", "[0/90]4s", "High stiffness in 0° and 90° directions"),
+            ("Angle-Ply", "[±45]4s", "Optimized for shear loading"),
+            ("Symmetric", "[0/45/90/-45]s", "Balanced symmetric layup"),
+            ("Unidirectional", "[0]8", "Maximum strength in fiber direction"),
+            ("Fabric", "[0/90]4s", "Woven fabric simulation"),
+            ("Tough", "[45/-45/0/90]2s", "Impact and damage resistant")
         ]
         
-        for name, sequence in layups:
-            btn = tk.Button(popup, text=f"{name}\n{sequence}",
-                           command=lambda s=sequence: self.apply_standard_layup(s, popup),
-                           bg=self.colors['primary'], fg='white', font=('Segoe UI', 9),
-                           padx=20, pady=10)
-            btn.pack(pady=5, fill=tk.X, padx=20)
+        for name, sequence, description in layups:
+            # Create card for each layup
+            layup_frame = tk.Frame(scrollable_frame, bg=self.colors['surface'], 
+                                  relief=tk.FLAT, bd=1, highlightbackground=self.colors['border'],
+                                  highlightthickness=1)
+            layup_frame.pack(pady=8, fill=tk.X, padx=5)
+            
+            # Main button
+            btn = tk.Button(layup_frame, text=f"{name}\n{sequence}",
+                           command=lambda s=sequence, p=popup: self.apply_standard_layup(s, p),
+                           bg=self.colors['primary'], fg='white', 
+                           font=('Segoe UI', 10, 'bold'),
+                           padx=25, pady=15, relief=tk.FLAT,
+                           activebackground=self.colors['primary_dark'],
+                           activeforeground='white')
+            btn.pack(side=tk.LEFT, padx=15, pady=15)
+            
+            # Description
+            desc_frame = tk.Frame(layup_frame, bg=self.colors['surface'])
+            desc_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 15), pady=15)
+            
+            tk.Label(desc_frame, text=description, bg=self.colors['surface'],
+                    fg=self.colors['text_secondary'], font=('Segoe UI', 9),
+                    wraplength=200, justify=tk.LEFT).pack(anchor=tk.W)
+        
+        # Bottom button frame
+        button_frame = tk.Frame(main_frame, bg=self.colors['background'])
+        button_frame.pack(fill=tk.X, pady=(15, 0))
+        
+        ttk.Button(button_frame, text="✖ Cancel", 
+                  command=popup.destroy, style='Secondary.TButton').pack(side=tk.RIGHT)
             
     def apply_standard_layup(self, sequence, popup):
         """Apply a standard layup sequence"""
@@ -1014,14 +1280,367 @@ class PanelFlutterGUI:
             messagebox.showwarning("No Layers", "Please add laminate layers first")
             return
             
-        # Show calculation results
-        messagebox.showinfo("ABD Matrix", 
-                           f"ABD matrix calculation for {len(self.laminate_layers)} layer laminate\n\n"
-                           "This would calculate:\n"
-                           "• [A] - Extensional stiffness matrix\n"
-                           "• [B] - Bending-extension coupling matrix\n"
-                           "• [D] - Bending stiffness matrix\n\n"
-                           "Results used in flutter analysis structural model")
+        try:
+            # Calculate ABD matrices using classical laminate theory
+            abd_matrices = self._compute_abd_matrices()
+            
+            # Show results in a new window
+            self._show_abd_results(abd_matrices)
+            
+        except Exception as e:
+            messagebox.showerror("Calculation Error", f"Failed to calculate ABD matrix:\n{str(e)}")
+    
+    def _compute_abd_matrices(self):
+        """Compute ABD matrices using classical laminate theory"""
+        import math
+        
+        # Get material properties (using current orthotropic values)
+        try:
+            E1 = float(self.e1_var.get() or "150e9")  # Pa
+            E2 = float(self.e2_var.get() or "9e9")    # Pa  
+            G12 = float(self.g12_var.get() or "5e9")  # Pa
+            nu12 = float(self.nu12_var.get() or "0.3")
+        except (ValueError, TypeError) as e:
+            # Use default values if conversion fails
+            E1 = 150e9
+            E2 = 9e9
+            G12 = 5e9
+            nu12 = 0.3
+        
+        # Calculate nu21 from symmetry
+        nu21 = nu12 * E2 / E1
+        
+        # Reduced stiffness matrix [Q]
+        denom = 1 - nu12 * nu21
+        Q11 = E1 / denom
+        Q22 = E2 / denom  
+        Q12 = nu12 * E2 / denom
+        Q66 = G12
+        Q16 = Q26 = 0  # For orthotropic materials
+        
+        # Initialize ABD matrices
+        A = np.zeros((3, 3))
+        B = np.zeros((3, 3))  
+        D = np.zeros((3, 3))
+        
+        # Calculate z-coordinates of layer interfaces
+        layer_thicknesses = []
+        for layer in self.laminate_layers:
+            try:
+                # Try to get thickness from StringVar
+                if hasattr(layer['thickness'], 'get'):
+                    thickness = float(layer['thickness'].get() or "0.125")
+                else:
+                    # Fallback: try to use the value directly
+                    thickness = float(layer['thickness'] or 0.125)
+                layer_thicknesses.append(thickness)
+            except (ValueError, TypeError, AttributeError) as e:
+                print(f"Thickness extraction error: {e}, using default")
+                layer_thicknesses.append(0.125)  # Default thickness in mm
+        
+        total_thickness = sum(layer_thicknesses)
+        z = [-total_thickness/2]
+        
+        for thickness in layer_thicknesses:
+            thickness_m = thickness / 1000  # Convert mm to m
+            z.append(z[-1] + thickness_m)
+        
+        # Calculate ABD matrices by integrating through thickness
+        for i, layer in enumerate(self.laminate_layers):
+            thickness = layer_thicknesses[i] / 1000  # Convert mm to m
+            
+            try:
+                # Try to get angle from StringVar
+                if hasattr(layer['angle'], 'get'):
+                    angle_deg = float(layer['angle'].get() or "0")
+                else:
+                    # Fallback: try to use the value directly
+                    angle_deg = float(layer['angle'] or 0)
+            except (ValueError, TypeError, AttributeError) as e:
+                print(f"Angle extraction error: {e}, using default")
+                angle_deg = 0.0
+            
+            angle_rad = math.radians(angle_deg)
+            
+            # Transformation matrix for angle
+            c = math.cos(angle_rad)
+            s = math.sin(angle_rad)
+            
+            # Transformed reduced stiffness matrix [Q̄]
+            Q11_bar = Q11*c**4 + 2*(Q12 + 2*Q66)*s**2*c**2 + Q22*s**4
+            Q12_bar = (Q11 + Q22 - 4*Q66)*s**2*c**2 + Q12*(s**4 + c**4)
+            Q22_bar = Q11*s**4 + 2*(Q12 + 2*Q66)*s**2*c**2 + Q22*c**4
+            Q16_bar = (Q11 - Q12 - 2*Q66)*s*c**3 + (Q12 - Q22 + 2*Q66)*s**3*c
+            Q26_bar = (Q11 - Q12 - 2*Q66)*s**3*c + (Q12 - Q22 + 2*Q66)*s*c**3
+            Q66_bar = (Q11 + Q22 - 2*Q12 - 2*Q66)*s**2*c**2 + Q66*(s**4 + c**4)
+            
+            # Layer distances from midplane
+            z1 = z[i]
+            z2 = z[i+1]
+            
+            # A matrix (extensional stiffness)
+            A[0,0] += Q11_bar * (z2 - z1)
+            A[0,1] += Q12_bar * (z2 - z1)
+            A[0,2] += Q16_bar * (z2 - z1)
+            A[1,0] += Q12_bar * (z2 - z1)
+            A[1,1] += Q22_bar * (z2 - z1)
+            A[1,2] += Q26_bar * (z2 - z1)
+            A[2,0] += Q16_bar * (z2 - z1)
+            A[2,1] += Q26_bar * (z2 - z1)
+            A[2,2] += Q66_bar * (z2 - z1)
+            
+            # B matrix (coupling stiffness)  
+            B[0,0] += Q11_bar * (z2**2 - z1**2) / 2
+            B[0,1] += Q12_bar * (z2**2 - z1**2) / 2
+            B[0,2] += Q16_bar * (z2**2 - z1**2) / 2
+            B[1,0] += Q12_bar * (z2**2 - z1**2) / 2
+            B[1,1] += Q22_bar * (z2**2 - z1**2) / 2
+            B[1,2] += Q26_bar * (z2**2 - z1**2) / 2
+            B[2,0] += Q16_bar * (z2**2 - z1**2) / 2
+            B[2,1] += Q26_bar * (z2**2 - z1**2) / 2
+            B[2,2] += Q66_bar * (z2**2 - z1**2) / 2
+            
+            # D matrix (bending stiffness)
+            D[0,0] += Q11_bar * (z2**3 - z1**3) / 3
+            D[0,1] += Q12_bar * (z2**3 - z1**3) / 3
+            D[0,2] += Q16_bar * (z2**3 - z1**3) / 3
+            D[1,0] += Q12_bar * (z2**3 - z1**3) / 3
+            D[1,1] += Q22_bar * (z2**3 - z1**3) / 3
+            D[1,2] += Q26_bar * (z2**3 - z1**3) / 3
+            D[2,0] += Q16_bar * (z2**3 - z1**3) / 3
+            D[2,1] += Q26_bar * (z2**3 - z1**3) / 3
+            D[2,2] += Q66_bar * (z2**3 - z1**3) / 3
+        
+        # Extract layup angles safely
+        layup_angles = []
+        for layer in self.laminate_layers:
+            try:
+                # Try to get angle from StringVar
+                if hasattr(layer['angle'], 'get'):
+                    angle = float(layer['angle'].get() or "0")
+                else:
+                    # Fallback: try to use the value directly
+                    angle = float(layer['angle'] or 0)
+                layup_angles.append(angle)
+            except (ValueError, TypeError, AttributeError) as e:
+                print(f"Layup angle extraction error: {e}, using default")
+                layup_angles.append(0.0)
+        
+        return {
+            'A': A,
+            'B': B, 
+            'D': D,
+            'total_thickness': total_thickness,
+            'num_layers': len(self.laminate_layers),
+            'layup': layup_angles
+        }
+    
+    def _show_abd_results(self, abd_data):
+        """Display ABD matrix results in a new window"""
+        # Create results window
+        results_window = tk.Toplevel(self.root)
+        results_window.title("ABD Matrix Calculation Results")
+        results_window.geometry("800x600")
+        results_window.configure(bg=self.colors['background'])
+        
+        # Make window resizable
+        results_window.resizable(True, True)
+        
+        # Create main scrollable frame
+        main_frame = tk.Frame(results_window, bg=self.colors['background'])
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        canvas = tk.Canvas(main_frame, bg=self.colors['background'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.colors['background'])
+        
+        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        
+        # Create window that expands with canvas width
+        window_id = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        
+        # Configure canvas to expand scrollable_frame to its width
+        def _configure_canvas(event):
+            canvas.itemconfig(window_id, width=event.width)
+        canvas.bind('<Configure>', _configure_canvas)
+        
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Title
+        title_frame = tk.Frame(scrollable_frame, bg=self.colors['background'])
+        title_frame.pack(fill=tk.X, padx=20, pady=20)
+        
+        tk.Label(title_frame, text="[MATRIX] ABD Matrix Results", 
+                font=('Segoe UI', 16, 'bold'),
+                bg=self.colors['background'], fg=self.colors['text_primary']).pack(anchor=tk.W)
+        
+        # Summary info
+        summary_frame = self.create_card(scrollable_frame, "📋 Layup Summary", "")
+        summary_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        summary_content = tk.Frame(summary_frame, bg=self.colors['surface'])
+        summary_content.pack(fill=tk.X, padx=20, pady=15)
+        
+        layup_str = f"[{'/'.join([str(int(angle)) for angle in abd_data['layup']])}]"
+        
+        summary_text = f"""Number of Layers: {abd_data['num_layers']}
+Total Thickness: {abd_data['total_thickness']:.3f} mm
+Layup Sequence: {layup_str}
+Laminate Type: {'Symmetric' if self._is_symmetric(abd_data['layup']) else 'Unsymmetric'}
+Coupling: {'Present' if np.max(np.abs(abd_data['B'])) > 1e-6 else 'Absent'}"""
+        
+        tk.Label(summary_content, text=summary_text, justify=tk.LEFT,
+                font=('Consolas', 10), bg=self.colors['surface'], 
+                fg=self.colors['text_primary']).pack(fill=tk.X, anchor=tk.W)
+        
+        # A Matrix (Extensional Stiffness)
+        self._create_matrix_display(scrollable_frame, "A Matrix (Extensional Stiffness)", 
+                                  abd_data['A'], "N/m")
+        
+        # B Matrix (Coupling Stiffness)
+        self._create_matrix_display(scrollable_frame, "B Matrix (Coupling Stiffness)", 
+                                  abd_data['B'], "N")
+        
+        # D Matrix (Bending Stiffness)
+        self._create_matrix_display(scrollable_frame, "D Matrix (Bending Stiffness)", 
+                                  abd_data['D'], "N⋅m")
+        
+        # Engineering properties (if available)
+        try:
+            eng_props = self._calculate_engineering_properties(abd_data)
+            self._create_engineering_properties_display(scrollable_frame, eng_props)
+        except:
+            pass  # Skip if calculation fails
+        
+        # Close button
+        button_frame = tk.Frame(scrollable_frame, bg=self.colors['background'])
+        button_frame.pack(fill=tk.X, padx=20, pady=20)
+        
+        ttk.Button(button_frame, text="📋 Copy to Clipboard", 
+                  command=lambda: self._copy_abd_to_clipboard(abd_data),
+                  style='Secondary.TButton').pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(button_frame, text="✖ Close", 
+                  command=results_window.destroy,
+                  style='Danger.TButton').pack(side=tk.RIGHT)
+    
+    def _create_matrix_display(self, parent, title, matrix, units):
+        """Create a formatted matrix display"""
+        card = self.create_card(parent, title, f"Units: {units}")
+        card.pack(fill=tk.X, padx=20, pady=10)
+        
+        content = tk.Frame(card, bg=self.colors['surface'])
+        content.pack(fill=tk.X, padx=20, pady=15)
+        
+        # Matrix display with fixed-width font - use full width
+        matrix_frame = tk.Frame(content, bg=self.colors['surface'])
+        matrix_frame.pack(fill=tk.X, expand=True)
+        
+        # Center the matrix display
+        matrix_container = tk.Frame(matrix_frame, bg=self.colors['surface'])
+        matrix_container.pack(expand=True)
+        
+        for i in range(3):
+            row_frame = tk.Frame(matrix_container, bg=self.colors['surface'])
+            row_frame.pack()
+            
+            for j in range(3):
+                value = matrix[i, j]
+                if abs(value) < 1e-10:
+                    value_str = "0.0"
+                elif abs(value) >= 1e6:
+                    value_str = f"{value:.2e}"
+                else:
+                    value_str = f"{value:.3f}"
+                
+                tk.Label(row_frame, text=f"{value_str:>15}", 
+                        font=('Consolas', 10), bg=self.colors['surface'],
+                        fg=self.colors['text_primary']).pack(side=tk.LEFT, padx=8)
+    
+    def _calculate_engineering_properties(self, abd_data):
+        """Calculate equivalent engineering properties"""
+        A = abd_data['A']
+        h = abd_data['total_thickness'] / 1000  # Convert to meters
+        
+        # Compliance matrix (inverse of A/h)
+        A_bar = A / h
+        S = np.linalg.inv(A_bar)
+        
+        # Engineering constants
+        Ex = 1.0 / S[0, 0]
+        Ey = 1.0 / S[1, 1]  
+        Gxy = 1.0 / S[2, 2]
+        nu_xy = -S[0, 1] / S[0, 0]
+        nu_yx = -S[0, 1] / S[1, 1]
+        
+        return {
+            'Ex': Ex,
+            'Ey': Ey,
+            'Gxy': Gxy,
+            'nu_xy': nu_xy,
+            'nu_yx': nu_yx
+        }
+    
+    def _create_engineering_properties_display(self, parent, props):
+        """Display equivalent engineering properties"""
+        card = self.create_card(parent, "🔧 Equivalent Engineering Properties", 
+                              "Membrane properties from A matrix")
+        card.pack(fill=tk.X, padx=20, pady=10)
+        
+        content = tk.Frame(card, bg=self.colors['surface'])
+        content.pack(fill=tk.X, padx=20, pady=15)
+        
+        props_text = f"""Ex = {props['Ex']/1e9:.2f} GPa
+Ey = {props['Ey']/1e9:.2f} GPa  
+Gxy = {props['Gxy']/1e9:.2f} GPa
+νxy = {props['nu_xy']:.3f}
+νyx = {props['nu_yx']:.3f}"""
+        
+        tk.Label(content, text=props_text, justify=tk.LEFT,
+                font=('Consolas', 10), bg=self.colors['surface'],
+                fg=self.colors['text_primary']).pack(fill=tk.X, anchor=tk.W)
+    
+    def _is_symmetric(self, layup):
+        """Check if layup is symmetric"""
+        n = len(layup)
+        for i in range(n//2):
+            if layup[i] != layup[n-1-i]:
+                return False
+        return True
+    
+    def _copy_abd_to_clipboard(self, abd_data):
+        """Copy ABD matrices to clipboard"""
+        try:
+            import tkinter.messagebox as mb
+            
+            # Format ABD data as text
+            text = f"ABD Matrix Results\n{'='*50}\n\n"
+            text += f"Layup: [{'/'.join([str(int(a)) for a in abd_data['layup']])}]\n"
+            text += f"Total Thickness: {abd_data['total_thickness']:.3f} mm\n\n"
+            
+            text += "A Matrix (Extensional Stiffness) [N/m]:\n"
+            for row in abd_data['A']:
+                text += " ".join([f"{val:12.3e}" for val in row]) + "\n"
+            text += "\n"
+            
+            text += "B Matrix (Coupling Stiffness) [N]:\n"
+            for row in abd_data['B']:
+                text += " ".join([f"{val:12.3e}" for val in row]) + "\n"
+            text += "\n"
+            
+            text += "D Matrix (Bending Stiffness) [N⋅m]:\n"
+            for row in abd_data['D']:
+                text += " ".join([f"{val:12.3e}" for val in row]) + "\n"
+            
+            # Copy to clipboard
+            self.root.clipboard_clear()
+            self.root.clipboard_append(text)
+            mb.showinfo("Copied", "ABD matrix data copied to clipboard!")
+            
+        except Exception as e:
+            messagebox.showerror("Copy Error", f"Failed to copy to clipboard:\n{str(e)}")
         
     def create_analysis_tab(self):
         """Create beautiful analysis parameters tab"""
@@ -1032,20 +1651,110 @@ class PanelFlutterGUI:
         cards_frame = tk.Frame(analysis_frame, bg=self.colors['background'])
         cards_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
-        # Analysis method card
-        method_card = self.create_card(cards_frame, "🔬 Analysis Method", 
-                                     "Select the flutter analysis approach")
-        method_card.pack(fill=tk.X, pady=(0, 20))
+        # Multi-solver selection card
+        solver_card = self.create_card(cards_frame, "🧮 Flutter Analysis Solver", 
+                                     "Choose your analysis method and solver")
+        solver_card.pack(fill=tk.X, pady=(0, 20))
         
-        method_content = tk.Frame(method_card, bg=self.colors['surface'])
-        method_content.pack(fill=tk.X, padx=20, pady=15)
+        solver_content = tk.Frame(solver_card, bg=self.colors['surface'])
+        solver_content.pack(fill=tk.X, padx=20, pady=15)
         
-        tk.Label(method_content, text="Solution Method:",
+        # Solver method selection
+        tk.Label(solver_content, text="Primary Solver:",
                 bg=self.colors['surface'], fg=self.colors['text_primary'],
                 font=('Segoe UI', 10, 'bold')).pack(anchor=tk.W, pady=(0, 5))
         
+        self.solver_method_var = tk.StringVar(value="auto")
+        solver_combo = ttk.Combobox(solver_content, textvariable=self.solver_method_var,
+                                   values=["auto (Smart Selection)", "piston_theory (Level 1)", 
+                                          "doublet_lattice (Level 2)", "nastran (Level 3)"],
+                                   state="readonly", style='Modern.TCombobox', width=30)
+        solver_combo.pack(anchor=tk.W, pady=(0, 10))
+        
+        # Multi-solver comparison option
+        self.multi_solver_var = tk.BooleanVar(value=True)
+        multi_solver_check = ttk.Checkbutton(solver_content, text="Enable multi-solver comparison",
+                                            variable=self.multi_solver_var,
+                                            style='Modern.TCheckbutton')
+        multi_solver_check.pack(anchor=tk.W, pady=(0, 10))
+        
+        # NASTRAN Configuration Section
+        nastran_frame = self.create_card(solver_content, "NASTRAN Configuration", 
+                                        "Configure NASTRAN solver path and options")
+        nastran_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        nastran_content = tk.Frame(nastran_frame, bg=self.colors['surface'])
+        nastran_content.pack(fill=tk.X, padx=20, pady=15)
+        
+        # NASTRAN executable path
+        tk.Label(nastran_content, text="NASTRAN Executable Path:",
+                bg=self.colors['surface'], fg=self.colors['text_primary'],
+                font=('Segoe UI', 10, 'bold')).pack(anchor=tk.W, pady=(0, 5))
+        
+        path_frame = tk.Frame(nastran_content, bg=self.colors['surface'])
+        path_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.nastran_path_var = tk.StringVar(value="auto-detect")
+        path_entry = tk.Entry(path_frame, textvariable=self.nastran_path_var,
+                             bg='white', fg=self.colors['text_primary'],
+                             font=('Segoe UI', 9), width=50)
+        path_entry.pack(side=tk.LEFT, padx=(0, 10))
+        
+        ttk.Button(path_frame, text="Browse...", 
+                  command=self.browse_nastran_executable,
+                  style='Secondary.TButton').pack(side=tk.LEFT, padx=(0, 5))
+        
+        ttk.Button(path_frame, text="Detect", 
+                  command=self.detect_nastran_executable,
+                  style='Secondary.TButton').pack(side=tk.LEFT)
+        
+        # NASTRAN status indicator
+        self.nastran_status_var = tk.StringVar(value="Checking...")
+        self.nastran_status_label = tk.Label(nastran_content, textvariable=self.nastran_status_var,
+                                           bg=self.colors['surface'], 
+                                           fg=self.colors['text_secondary'],
+                                           font=('Segoe UI', 9, 'italic'))
+        self.nastran_status_label.pack(anchor=tk.W, pady=(0, 10))
+        
+        # NASTRAN options
+        options_frame = tk.Frame(nastran_content, bg=self.colors['surface'])
+        options_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        tk.Label(options_frame, text="Memory:", bg=self.colors['surface'], 
+                fg=self.colors['text_primary'], font=('Segoe UI', 9)).pack(side=tk.LEFT)
+        
+        self.nastran_memory_var = tk.StringVar(value="4gb")
+        memory_combo = ttk.Combobox(options_frame, textvariable=self.nastran_memory_var,
+                                   values=["2gb", "4gb", "8gb", "16gb", "32gb"],
+                                   state="readonly", style='Modern.TCombobox', width=8)
+        memory_combo.pack(side=tk.LEFT, padx=(5, 15))
+        
+        tk.Label(options_frame, text="CPU Time (min):", bg=self.colors['surface'],
+                fg=self.colors['text_primary'], font=('Segoe UI', 9)).pack(side=tk.LEFT)
+        
+        self.nastran_time_var = tk.StringVar(value="30")
+        time_entry = tk.Entry(options_frame, textvariable=self.nastran_time_var,
+                             bg='white', fg=self.colors['text_primary'],
+                             font=('Segoe UI', 9), width=5)
+        time_entry.pack(side=tk.LEFT, padx=(5, 0))
+        
+        # Initialize NASTRAN detection
+        self.root.after(1000, self.detect_nastran_executable)  # Check after GUI loads
+        
+        # Solver info button
+        info_frame = tk.Frame(solver_content, bg=self.colors['surface'])
+        info_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Button(info_frame, text="ℹ️ Solver Information", 
+                  command=self.show_solver_info, style='Secondary.TButton').pack(side=tk.LEFT)
+        
+        # Traditional NASTRAN method selection (for compatibility)
+        tk.Label(solver_content, text="NASTRAN Solution Method:",
+                bg=self.colors['surface'], fg=self.colors['text_primary'],
+                font=('Segoe UI', 10, 'bold')).pack(anchor=tk.W, pady=(10, 5))
+        
         self.method_var = tk.StringVar(value="PK")
-        method_combo = ttk.Combobox(method_content, textvariable=self.method_var,
+        method_combo = ttk.Combobox(solver_content, textvariable=self.method_var,
                                   values=["PK (P-K Method)", "K (K Method)", "KE (KE Method)", "PKNL (Nonlinear PK)"], 
                                   state="readonly", style='Modern.TCombobox', width=25)
         method_combo.pack(anchor=tk.W)
@@ -1109,6 +1818,46 @@ class PanelFlutterGUI:
                                      font=('Segoe UI', 8))
         self.progress_label.pack(anchor=tk.W)
         
+    def show_solver_info(self):
+        """Show information about available flutter analysis solvers"""
+        info_text = """
+FLUTTER ANALYSIS SOLVERS:
+
+• AUTO (Smart Selection)
+  Automatically recommends the best solver based on your
+  flow conditions and panel properties.
+
+• PISTON THEORY (Level 1)
+  - Speed: Very fast (~1 second)
+  - Best for: Supersonic flow (M > 1.2) 
+  - Accuracy: Good for preliminary design
+  - Method: Simplified aerodynamics + analytical structure
+
+• DOUBLET LATTICE (Level 2)
+  - Speed: Fast (~10 seconds)
+  - Best for: Subsonic/transonic (M < 0.95)
+  - Accuracy: Better than piston theory
+  - Method: Unsteady aerodynamics + finite elements
+
+• NASTRAN (Level 3)
+  - Speed: Slow (~minutes)
+  - Best for: All conditions, final design
+  - Accuracy: Most accurate and comprehensive
+  - Method: Full aeroelastic analysis
+
+RECOMMENDATIONS:
+- Preliminary design: Use AUTO or Piston Theory
+- Design validation: Enable multi-solver comparison
+- Final analysis: Use NASTRAN
+- For certification: Always validate with multiple methods
+
+MULTI-SOLVER COMPARISON:
+When enabled, runs multiple methods and compares results
+to give you confidence levels and validation.
+        """
+        
+        messagebox.showinfo("Flutter Analysis Solvers", info_text)
+    
     def stop_analysis(self):
         """Stop running analysis"""
         self.status_var.set("⏹️ Analysis stopped by user")
@@ -1167,7 +1916,7 @@ class PanelFlutterGUI:
         status_frame = tk.Frame(summary_content, bg=self.colors['surface'])
         status_frame.pack(fill=tk.X, pady=(10, 0))
         
-        self.safety_indicator = tk.Label(status_frame, text="🔴 No Analysis Run",
+        self.safety_indicator = tk.Label(status_frame, text="[STATUS] No Analysis Run",
                                         bg=self.colors['surface'], fg=self.colors['text_secondary'],
                                         font=('Segoe UI', 10))
         self.safety_indicator.pack(anchor=tk.W)
@@ -1213,9 +1962,9 @@ class PanelFlutterGUI:
     def preview_geometry(self):
         """Preview geometry visualization"""
         try:
-            length = float(self.length_var.get())
-            width = float(self.width_var.get())
-            nchord = self.nchord_var.get()
+            length = float(self.length_var.get()) / 1000.0  # Convert mm to m
+            width = float(self.width_var.get()) / 1000.0  # Convert mm to m
+            nlength = self.nlength_var.get()
             nspan = self.nspan_var.get()
             
             # Create preview window
@@ -1228,7 +1977,7 @@ class PanelFlutterGUI:
             ax = fig.add_subplot(111, projection='3d')
             
             # Generate mesh
-            x = np.linspace(0, length, nchord + 1)
+            x = np.linspace(0, length, nlength + 1)
             y = np.linspace(0, width, nspan + 1)
             X, Y = np.meshgrid(x, y)
             Z = np.zeros_like(X)
@@ -1242,17 +1991,17 @@ class PanelFlutterGUI:
             outline_z = [0, 0, 0, 0, 0]
             ax.plot(outline_x, outline_y, outline_z, 'r-', linewidth=2)
             
-            ax.set_xlabel('X (m)')
-            ax.set_ylabel('Y (m)')
-            ax.set_zlabel('Z (m)')
-            ax.set_title(f'Panel Geometry ({nchord}×{nspan} elements)')
+            ax.set_xlabel('X (mm)')
+            ax.set_ylabel('Y (mm)')
+            ax.set_zlabel('Z (mm)')
+            ax.set_title(f'Panel Geometry ({nlength}×{nspan} elements)')
             
             # Create canvas
             canvas = FigureCanvasTkAgg(fig, preview_window)
             canvas.draw()
             canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
             
-            self.status_var.set(f"Geometry preview: {length}m × {width}m panel with {nchord}×{nspan} elements")
+            self.status_var.set(f"Geometry preview: {length}m × {width}m panel with {nlength}×{nspan} elements")
             
         except ValueError:
             messagebox.showerror("Invalid Input", "Please enter valid numeric values")
@@ -1290,11 +2039,33 @@ class PanelFlutterGUI:
         try:
             # Import analysis modules
             sys.path.insert(0, str(Path(__file__).parent / "src"))
+            
+            # Check solver method selection
+            solver_method = getattr(self, 'solver_method_var', tk.StringVar(value="auto")).get().split()[0]  # Get first word
+            multi_solver_enabled = getattr(self, 'multi_solver_var', tk.BooleanVar(value=True)).get()
+            
+            # Use multi-solver if selected or auto mode
+            if solver_method in ["piston_theory", "doublet_lattice", "auto"] or multi_solver_enabled:
+                self._run_multi_solver_analysis()
+                return
+            
+            # Fallback to traditional NASTRAN analysis
             from gui.analysis import (
                 AnalysisRunner, FlutterAnalysisConfig, 
                 GeometryConfig, MaterialConfig, ResultsAnalyzer
             )
             
+            self._run_nastran_analysis()
+            
+        except Exception as e:
+            self.logger.error(f"Analysis thread error: {e}")
+            self.root.after(0, lambda: self.status_var.set(f"Analysis failed: {str(e)}"))
+            self.root.after(0, lambda: self.run_button.config(state='normal'))
+            self.root.after(0, lambda: self.stop_button.config(state='disabled'))
+    
+    def _run_nastran_analysis(self):
+        """Run traditional NASTRAN analysis"""
+        try:
             # Create analysis configuration from GUI inputs
             config = FlutterAnalysisConfig(
                 method=getattr(self, 'analysis_method', tk.StringVar(value="PK")).get(),
@@ -1315,12 +2086,12 @@ class PanelFlutterGUI:
             
             # Create geometry configuration from GUI inputs  
             geometry = GeometryConfig(
-                length=float(getattr(self, 'length_var', tk.StringVar(value="1.0")).get()),
-                width=float(getattr(self, 'width_var', tk.StringVar(value="0.5")).get()),
-                thickness=float(getattr(self, 'thickness_var', tk.StringVar(value="0.001")).get()),
+                length=float(getattr(self, 'length_var', tk.StringVar(value="500.0")).get()) / 1000.0,  # Convert mm to m
+                width=float(getattr(self, 'width_var', tk.StringVar(value="300.0")).get()) / 1000.0,  # Convert mm to m
+                thickness=float(self.thickness_var.get()) / 1000.0,  # Convert mm to m
                 num_elements_x=int(getattr(self, 'num_elem_x_var', tk.StringVar(value="10")).get()),
                 num_elements_y=int(getattr(self, 'num_elem_y_var', tk.StringVar(value="5")).get()),
-                boundary_conditions=getattr(self, 'boundary_conditions', tk.StringVar(value="SSSS")).get()
+                boundary_conditions=self.get_boundary_condition_code()
             )
             
             # Create material configuration from GUI inputs
@@ -1505,18 +2276,18 @@ class PanelFlutterGUI:
             
             # Update safety indicator
             if flutter_speed > 250:
-                self.safety_indicator.config(text="🟢 Safe - Flutter speed well above operating range", 
+                self.safety_indicator.config(text="[SAFE] Flutter speed well above operating range", 
                                            fg=self.colors['success'])
             elif flutter_speed > 150:
-                self.safety_indicator.config(text="🟡 Caution - Flutter speed near operating range", 
+                self.safety_indicator.config(text="[CAUTION] Flutter speed near operating range", 
                                            fg=self.colors['warning'])
             else:
-                self.safety_indicator.config(text="🔴 Danger - Flutter speed in operating range", 
+                self.safety_indicator.config(text="[DANGER] Flutter speed in operating range", 
                                            fg=self.colors['error'])
         else:
             self.flutter_speed_var.set("No flutter")
             self.flutter_freq_var.set("--")
-            self.safety_indicator.config(text="🟢 Safe - No flutter detected in range", 
+            self.safety_indicator.config(text="[SAFE] No flutter detected in range", 
                                        fg=self.colors['success'])
             
         # Update plots with modern styling
@@ -1531,8 +2302,12 @@ class PanelFlutterGUI:
         danger_color = self.colors['error']
         
         # V-f plot with enhanced styling
-        ax1.plot(velocities, frequencies, color=plot_color, linewidth=3, 
-                marker='o', markersize=5, alpha=0.8, label='Frequency')
+        if velocities and frequencies:
+            ax1.plot(velocities, frequencies, color=plot_color, linewidth=3, 
+                    marker='o', markersize=5, alpha=0.8, label='Frequency')
+        else:
+            ax1.text(0.5, 0.5, 'No Data', transform=ax1.transAxes, ha='center', va='center',
+                    fontsize=14, color=self.colors['text_light'])
         ax1.set_xlabel('Velocity (m/s)', fontsize=11, fontweight='bold')
         ax1.set_ylabel('Frequency (Hz)', fontsize=11, fontweight='bold')
         ax1.set_title('V-f Diagram', fontsize=12, fontweight='bold', pad=15)
@@ -1545,24 +2320,29 @@ class PanelFlutterGUI:
             ax1.legend(loc='best', framealpha=0.9)
             
         # V-g plot with enhanced styling
-        ax2.plot(velocities, dampings, color=plot_color, linewidth=3, 
-                marker='s', markersize=5, alpha=0.8, label='Damping')
-        ax2.axhline(y=0, color='black', linestyle='-', linewidth=1, alpha=0.5)
+        if velocities and dampings:
+            ax2.plot(velocities, dampings, color=plot_color, linewidth=3, 
+                    marker='s', markersize=5, alpha=0.8, label='Damping')
+            ax2.axhline(y=0, color='black', linestyle='-', linewidth=1, alpha=0.5)
+            # Highlight unstable region
+            import numpy as np
+            dampings_array = np.array(dampings)
+            ax2.fill_between(velocities, dampings_array, 0, where=(dampings_array < 0),
+                        color=danger_color, alpha=0.2, interpolate=True, label='Unstable')
+            
+            if flutter_speed is not None:
+                ax2.axvline(x=flutter_speed, color=danger_color, linestyle='--', 
+                           linewidth=3, alpha=0.8, label=f'Flutter: {flutter_speed:.1f} m/s')
+            ax2.legend(loc='best', framealpha=0.9)
+        else:
+            ax2.text(0.5, 0.5, 'No Data', transform=ax2.transAxes, ha='center', va='center',
+                    fontsize=14, color=self.colors['text_light'])
+        
         ax2.set_xlabel('Velocity (m/s)', fontsize=11, fontweight='bold')
         ax2.set_ylabel('Damping', fontsize=11, fontweight='bold')
         ax2.set_title('V-g Diagram', fontsize=12, fontweight='bold', pad=15)
         ax2.grid(True, alpha=0.2, linestyle='-', linewidth=0.8)
         ax2.set_facecolor('#FAFAFA')
-        
-        # Highlight unstable region
-        ax2.fill_between(velocities, dampings, 0, where=(dampings < 0), 
-                        color=danger_color, alpha=0.2, interpolate=True, label='Unstable')
-        
-        if flutter_speed is not None:
-            ax2.axvline(x=flutter_speed, color=danger_color, linestyle='--', 
-                       linewidth=3, alpha=0.8, label=f'Flutter: {flutter_speed:.1f} m/s')
-                       
-        ax2.legend(loc='best', framealpha=0.9)
         
         # Modern plot styling
         for ax in [ax1, ax2]:
@@ -1584,7 +2364,7 @@ class PanelFlutterGUI:
         ax = self.fig.add_subplot(1, 1, 1)
         
         # Modern empty state styling
-        ax.text(0.5, 0.6, '📊', transform=ax.transAxes, ha='center', va='center',
+        ax.text(0.5, 0.6, '[CHART]', transform=ax.transAxes, ha='center', va='center',
                fontsize=48, color=self.colors['text_light'], alpha=0.5)
         ax.text(0.5, 0.4, 'No Results Available', transform=ax.transAxes, ha='center', va='center',
                fontsize=16, fontweight='bold', color=self.colors['text_secondary'])
@@ -1603,6 +2383,320 @@ class PanelFlutterGUI:
         self.fig.tight_layout()
         self.canvas.draw()
         
+    def _run_multi_solver_analysis(self):
+        """Run multi-solver flutter analysis with timeout protection"""
+        try:
+            # Import multi-solver framework
+            from analysis.multi_solver_framework import (
+                MultiSolverAnalyzer, SolverMethod, SolverSelector
+            )
+            from analysis.piston_theory_solver import PanelProperties, FlowConditions
+            import time
+            
+            # Update status
+            self.root.after(0, lambda: self.status_var.set("Initializing multi-solver analysis..."))
+            self.root.after(0, lambda: self.progress_var.set(10))
+            self.root.after(0, lambda: self.progress_label.config(text="Setting up analysis parameters..."))
+            
+            start_time = time.time()
+            
+            # Get panel properties from GUI with boundary conditions
+            try:
+                from analysis.boundary_conditions import BoundaryCondition
+                bc_code = self.get_boundary_condition_code()
+                bc_enum = BoundaryCondition(bc_code)
+                boundary_conditions = bc_enum
+            except:
+                boundary_conditions = self.get_boundary_condition_code()
+            
+            panel = PanelProperties(
+                length=float(self.length_var.get()) / 1000.0,  # Convert mm to m
+                width=float(self.width_var.get()) / 1000.0,    # Convert mm to m
+                thickness=float(self.thickness_var.get()) / 1000.0,  # Convert mm to m
+                youngs_modulus=float(getattr(self, 'youngs_var', tk.StringVar(value="71.7e9")).get()),
+                poissons_ratio=float(getattr(self, 'poisson_var', tk.StringVar(value="0.33")).get()),
+                density=float(getattr(self, 'density_var', tk.StringVar(value="2810")).get()),
+                boundary_conditions=boundary_conditions
+            )
+            
+            # Get flow conditions
+            flow = FlowConditions(
+                mach_number=float(self.mach_var.get()),
+                altitude=8000  # Default altitude
+            )
+            
+            # Update status
+            self.root.after(0, lambda: self.status_var.set("Getting solver recommendation..."))
+            self.root.after(0, lambda: self.progress_var.set(20))
+            
+            # Get solver recommendation and run analysis
+            analyzer = MultiSolverAnalyzer()
+            selector = SolverSelector()
+            recommendation = selector.recommend_solver(panel, flow)
+            
+            solver_method_str = self.solver_method_var.get().split()[0]
+            methods = []
+            
+            if solver_method_str == "auto":
+                methods = [recommendation.recommended_method]
+            elif solver_method_str == "piston_theory":
+                methods = [SolverMethod.PISTON_THEORY]
+            elif solver_method_str == "doublet_lattice":
+                methods = [SolverMethod.DOUBLET_LATTICE]
+            
+            if self.multi_solver_var.get() and len(methods) == 1:
+                # Add comparison method
+                if methods[0] == SolverMethod.PISTON_THEORY:
+                    methods.append(SolverMethod.DOUBLET_LATTICE)
+                else:
+                    methods.append(SolverMethod.PISTON_THEORY)
+            
+            # Run analysis with timeout protection
+            method_names = [m.value.replace('_', ' ').title() for m in methods]
+            self.root.after(0, lambda: self.status_var.set(f"Running: {', '.join(method_names)}"))
+            self.root.after(0, lambda: self.progress_var.set(50))
+            self.root.after(0, lambda: self.progress_label.config(text=f"Executing {', '.join(method_names)} solver(s)..."))
+            
+            # Limit velocity range for faster analysis
+            velocity_range = (float(self.vmin_var.get()), float(self.vmax_var.get()))
+            max_points = 20  # Reduce points for faster analysis
+            
+            # Check for timeout during analysis
+            if time.time() - start_time > 30:  # 30 second timeout
+                raise TimeoutError("Analysis taking too long - try reducing velocity range")
+            
+            # Get NASTRAN configuration from GUI
+            nastran_config = self.get_nastran_config()
+            
+            results = analyzer.analyze_with_multiple_solvers(
+                panel, flow, methods, velocity_range, num_points=max_points, 
+                nastran_config=nastran_config
+            )
+            
+            self.root.after(0, lambda: self.progress_var.set(90))
+            self.root.after(0, lambda: self.progress_label.config(text="Processing results..."))
+            
+            # Process results
+            has_results = any(method_results for method_results in results.values())
+            
+            if has_results:
+                if len([r for r in results.values() if r]) > 1:
+                    # Multi-solver comparison
+                    comparison = analyzer.compare_results(results)
+                    if comparison:
+                        critical_speed = comparison.recommended_result.flutter_speed
+                        critical_freq = comparison.recommended_result.flutter_frequency
+                        confidence = comparison.confidence_level
+                        # Fix lambda closure issues
+                        status_msg = f"Multi-solver complete: {critical_speed:.1f} m/s (Confidence: {confidence})"
+                        self.root.after(0, lambda msg=status_msg: self.status_var.set(msg))
+                        self.root.after(0, lambda comp=comparison: self._display_multi_solver_results(comp))
+                        # Update Results tab with plot data
+                        plot_data = self._extract_plot_data(results)
+                        self.root.after(0, lambda: self._update_results(
+                            plot_data['velocities'], plot_data['frequencies'], 
+                            plot_data['dampings'], critical_speed, critical_freq
+                        ))
+                    else:
+                        self.root.after(0, lambda: self.status_var.set("Analysis complete - comparison failed"))
+                else:
+                    # Single solver result
+                    for method, method_results in results.items():
+                        if method_results:
+                            critical = min(method_results, key=lambda r: r.flutter_speed)
+                            # Fix lambda closure issue
+                            status_msg = f"{method} complete: {critical.flutter_speed:.1f} m/s"
+                            self.root.after(0, lambda msg=status_msg: self.status_var.set(msg))
+                            # Update Results tab with plot data
+                            plot_data = self._extract_plot_data(results)
+                            self.root.after(0, lambda: self._update_results(
+                                plot_data['velocities'], plot_data['frequencies'], 
+                                plot_data['dampings'], critical.flutter_speed, critical.flutter_frequency
+                            ))
+                            break
+            else:
+                self.root.after(0, lambda: self.status_var.set("No flutter found in velocity range"))
+                # Update Results tab to show no flutter
+                self.root.after(0, lambda: self._update_results(None, None, None, None, None))
+            
+            # Update progress and status immediately
+            self.root.after(0, lambda: self.progress_var.set(100))
+            self.root.after(0, lambda: self.progress_label.config(text="Analysis complete"))
+            # Force GUI update
+            self.root.after(0, lambda: self.root.update_idletasks())
+            
+        except Exception as e:
+            self.logger.error(f"Multi-solver analysis failed: {e}")
+            self.root.after(0, lambda: self.status_var.set(f"Analysis failed: {str(e)}"))
+            self.root.after(0, lambda: self.progress_label.config(text="Analysis failed"))
+        finally:
+            # Reset GUI state
+            self.root.after(0, lambda: self.run_button.config(state='normal'))
+            self.root.after(0, lambda: self.stop_button.config(state='disabled'))
+            # Reset progress after a short delay so user can see completion
+            self.root.after(2000, lambda: self.progress_var.set(0))
+            self.root.after(2000, lambda: self.progress_label.config(text="Ready for analysis"))
+    
+    def browse_nastran_executable(self):
+        """Browse for NASTRAN executable file"""
+        from tkinter import filedialog
+        
+        # File dialog for executable selection
+        file_types = [
+            ("Executable files", "*.exe"),
+            ("All files", "*.*")
+        ]
+        
+        filename = filedialog.askopenfilename(
+            title="Select NASTRAN Executable",
+            filetypes=file_types,
+            initialdir="C:/",
+        )
+        
+        if filename:
+            self.nastran_path_var.set(filename)
+            self.check_nastran_executable(filename)
+    
+    def detect_nastran_executable(self):
+        """Auto-detect NASTRAN executable"""
+        try:
+            from analysis.nastran_solver import NastranSolver, NastranConfig
+            
+            # Create solver with default config to test detection
+            config = NastranConfig()
+            solver = NastranSolver(config)
+            
+            if solver.is_available():
+                # Found NASTRAN
+                self.nastran_path_var.set(solver.nastran_executable)
+                self.nastran_status_var.set("[AVAILABLE] NASTRAN detected and ready")
+                self.nastran_status_label.config(fg=self.colors['success'])
+            else:
+                # Not found
+                self.nastran_path_var.set("auto-detect")
+                self.nastran_status_var.set("[NOT FOUND] NASTRAN not detected - will use simulation mode")
+                self.nastran_status_label.config(fg=self.colors['warning'])
+                
+        except Exception as e:
+            self.nastran_status_var.set(f"[ERROR] Detection failed: {str(e)}")
+            self.nastran_status_label.config(fg=self.colors['error'])
+    
+    def check_nastran_executable(self, path: str):
+        """Check if specified NASTRAN executable is valid"""
+        try:
+            from analysis.nastran_solver import NastranSolver
+            
+            # Create a test solver with the specified path
+            solver = NastranSolver()
+            if solver._test_nastran_executable(path):
+                self.nastran_status_var.set("[AVAILABLE] NASTRAN executable verified")
+                self.nastran_status_label.config(fg=self.colors['success'])
+            else:
+                self.nastran_status_var.set("[INVALID] File is not a valid NASTRAN executable")
+                self.nastran_status_label.config(fg=self.colors['error'])
+                
+        except Exception as e:
+            self.nastran_status_var.set(f"[ERROR] Verification failed: {str(e)}")
+            self.nastran_status_label.config(fg=self.colors['error'])
+    
+    def get_nastran_config(self):
+        """Get NASTRAN configuration from GUI settings"""
+        try:
+            from analysis.nastran_solver import NastranConfig
+            
+            # Custom paths if specified
+            nastran_paths = []
+            current_path = self.nastran_path_var.get().strip()
+            
+            if current_path and current_path != "auto-detect":
+                nastran_paths.insert(0, current_path)
+            
+            # Add default paths for fallback
+            default_config = NastranConfig()
+            nastran_paths.extend(default_config.nastran_paths)
+            
+            # Get memory and time settings
+            memory = self.nastran_memory_var.get()
+            try:
+                cpu_time_minutes = int(self.nastran_time_var.get())
+                cpu_time = cpu_time_minutes * 60  # Convert to seconds
+            except:
+                cpu_time = 1800  # Default 30 minutes
+            
+            return NastranConfig(
+                nastran_paths=nastran_paths,
+                memory=memory,
+                cpu_time=cpu_time
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error creating NASTRAN config: {e}")
+            # Return default config as fallback
+            from analysis.nastran_solver import NastranConfig
+            return NastranConfig()
+    
+    def _extract_plot_data(self, results):
+        """Extract plot data from multi-solver results"""
+        velocities = []
+        frequencies = []
+        dampings = []
+        
+        # Combine results from all methods
+        for method, method_results in results.items():
+            if method_results:
+                for result in method_results:
+                    velocities.append(result.flutter_speed)
+                    frequencies.append(result.flutter_frequency)
+                    dampings.append(result.damping)
+        
+        # Sort by velocity for plotting
+        if velocities:
+            sorted_data = sorted(zip(velocities, frequencies, dampings))
+            velocities, frequencies, dampings = zip(*sorted_data)
+            
+        return {
+            'velocities': list(velocities) if velocities else [],
+            'frequencies': list(frequencies) if frequencies else [],
+            'dampings': list(dampings) if dampings else []
+        }
+    
+    def _display_multi_solver_results(self, comparison):
+        """Display multi-solver comparison results"""
+        try:
+            results_window = tk.Toplevel(self.root)
+            results_window.title("Multi-Solver Flutter Analysis Results")
+            results_window.geometry("600x400")
+            
+            main_frame = tk.Frame(results_window, bg=self.colors['background'])
+            main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+            
+            # Title
+            tk.Label(main_frame, text="Multi-Solver Analysis Results",
+                    bg=self.colors['background'], fg=self.colors['text_primary'],
+                    font=('Segoe UI', 14, 'bold')).pack(pady=(0, 20))
+            
+            # Results summary
+            summary_text = f"""Confidence Level: {comparison.confidence_level}
+            
+Recommended Flutter Speed: {comparison.recommended_result.flutter_speed:.1f} m/s
+Method: {comparison.recommended_result.method}
+            
+Comparison:"""
+            
+            for i, method in enumerate(comparison.methods):
+                speed = comparison.flutter_speeds[i]
+                diff = comparison.relative_differences[method]
+                summary_text += f"\n  {method}: {speed:.1f} m/s ({diff:+.1f}%)"
+            
+            tk.Label(main_frame, text=summary_text, justify=tk.LEFT,
+                    bg=self.colors['background'], fg=self.colors['text_primary'],
+                    font=('Segoe UI', 10)).pack(pady=20)
+            
+            ttk.Button(main_frame, text="Close", command=results_window.destroy).pack(pady=10)
+            
+        except Exception as e:
+            self.logger.error(f"Error displaying results: {e}")
+    
     def run(self):
         """Start the application"""
         print("GUI started successfully!")

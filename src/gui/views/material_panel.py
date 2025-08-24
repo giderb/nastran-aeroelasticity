@@ -105,8 +105,8 @@ class MaterialPanel:
         geom_frame.pack(fill=tk.X, padx=5, pady=5)
         
         # Thickness
-        self.thickness_entry = LabeledEntry(geom_frame, "Thickness (m):", is_positive_float, width=15)
-        self.thickness_entry.set("0.002")
+        self.thickness_entry = LabeledEntry(geom_frame, "Thickness (mm):", is_positive_float, width=15)
+        self.thickness_entry.set("2.0")
         self.thickness_entry.pack(anchor=tk.W, pady=2)
         
         # Calculate derived properties button

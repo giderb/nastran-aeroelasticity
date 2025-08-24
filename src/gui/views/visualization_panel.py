@@ -130,9 +130,9 @@ class VisualizationPanel:
         self.ax.clear()
         
         # Set labels and title
-        self.ax.set_xlabel('X (m)')
-        self.ax.set_ylabel('Y (m)')
-        self.ax.set_zlabel('Z (m)')
+        self.ax.set_xlabel('X (mm)')
+        self.ax.set_ylabel('Y (mm)')
+        self.ax.set_zlabel('Z (mm)')
         self.ax.set_title('Panel Flutter Analysis - No Data')
         
         # Draw coordinate system axes
@@ -197,9 +197,9 @@ class VisualizationPanel:
                                    fontsize=10, color='red')
                         
             # Set labels and title
-            self.ax.set_xlabel('X (m)')
-            self.ax.set_ylabel('Y (m)')
-            self.ax.set_zlabel('Z (m)')
+            self.ax.set_xlabel('X (mm)')
+            self.ax.set_ylabel('Y (mm)')
+            self.ax.set_zlabel('Z (mm)')
             self.ax.set_title('Panel Geometry')
             
             # Draw coordinate system
@@ -272,9 +272,9 @@ class VisualizationPanel:
                               c='red', s=50, label='Corner Points')
                               
             # Set labels and title
-            self.ax.set_xlabel('X (m)')
-            self.ax.set_ylabel('Y (m)')
-            self.ax.set_zlabel('Z (m)')
+            self.ax.set_xlabel('X (mm)')
+            self.ax.set_ylabel('Y (mm)')
+            self.ax.set_zlabel('Z (mm)')
             self.ax.set_title(f'Panel Mesh ({n_chord}×{n_span} elements)')
             
             # Grid and axes
@@ -331,9 +331,9 @@ class VisualizationPanel:
                         label='Undeformed Shape')
             
             # Set labels and title
-            self.ax.set_xlabel('X (m)')
-            self.ax.set_ylabel('Y (m)')
-            self.ax.set_zlabel('Displacement (m)')
+            self.ax.set_xlabel('X (mm)')
+            self.ax.set_ylabel('Y (mm)')
+            self.ax.set_zlabel('Displacement (mm)')
             self.ax.set_title(f'{mode_name} (Scale: {scale_factor:.1f})')
             
             if self.show_grid_var.get():
