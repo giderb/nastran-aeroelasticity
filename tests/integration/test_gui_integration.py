@@ -569,8 +569,8 @@ if __name__ == '__main__':
     print(f"Errors: {len(result.errors)}")
     
     if result.wasSuccessful():
-        print("✅ ALL INTEGRATION TESTS PASSED")
+        print("ALL INTEGRATION TESTS PASSED")
         exit(0)
     else:
-        print("❌ SOME INTEGRATION TESTS FAILED")
+        print("SOME INTEGRATION TESTS FAILED")
         exit(1)

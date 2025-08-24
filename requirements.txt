@@ -23,3 +23,5 @@ pytest-cov>=2.12.0
 # Development Tools (optional)
 black>=22.0.0
 flake8>=4.0.0
+
+pyinstaller

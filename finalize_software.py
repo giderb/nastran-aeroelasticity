@@ -29,6 +29,10 @@ def run_command(command, description):
     """Run a command and return success status"""
     print(f"{description}... ", end="", flush=True)
     try:
+        # Use virtual environment Python
+        if command.startswith("py "):
+            command = command.replace("py ", '".venv/Scripts/python.exe" ', 1)
+        
         result = subprocess.run(command, shell=True, capture_output=True, text=True)
         if result.returncode == 0:
             print("SUCCESS")
@@ -39,22 +43,22 @@ def run_command(command, description):
                 print(f"   Error: {result.stderr.strip()}")
             return False
     except Exception as e:
-        print(f"❌ ERROR: {e}")
+        print(f"ERROR: {e}")
         return False
 
 def check_file_exists(file_path, description):
     """Check if a file exists"""
-    print(f"📋 Checking {description}... ", end="", flush=True)
+    print(f"Checking {description}... ", end="", flush=True)
     if Path(file_path).exists():
-        print("✅ EXISTS")
+        print("EXISTS")
         return True
     else:
-        print("❌ MISSING")
+        print("MISSING")
         return False
 
 def run_tests():
     """Run comprehensive test suite"""
-    print("\n🧪 RUNNING COMPREHENSIVE TEST SUITE")
+    print("\nRUNNING COMPREHENSIVE TEST SUITE")
     print("-" * 40)
     
     test_results = {}
@@ -78,7 +82,7 @@ def run_tests():
 
 def validate_software_components():
     """Validate all software components are present"""
-    print("\n🔍 VALIDATING SOFTWARE COMPONENTS")
+    print("\nVALIDATING SOFTWARE COMPONENTS")
     print("-" * 38)
     
     validation_results = {}
@@ -86,7 +90,7 @@ def validate_software_components():
     # Core files
     core_files = [
         ("launch_gui.py", "Main launcher"),
-        ("src/gui/main_window.py", "Main GUI module"),
+        ("src/gui/main_app.py", "Main GUI module"),
         ("src/gui/analysis/flutter_engine.py", "Flutter analysis engine"),
         ("src/gui/help_system.py", "Help system"),
         ("tests/test_runner.py", "Test framework"),
@@ -107,7 +111,7 @@ def validate_software_components():
 
 def check_dependencies():
     """Check all dependencies are available"""
-    print("\n📦 CHECKING DEPENDENCIES")
+    print("\nCHECKING DEPENDENCIES")
     print("-" * 25)
     
     required_packages = [
@@ -123,50 +127,55 @@ def check_dependencies():
                 import tkinter
             else:
                 __import__(package)
-            print("✅ AVAILABLE")
+            print("AVAILABLE")
         except ImportError:
-            print("❌ MISSING")
+            print("MISSING")
             missing_packages.append(package)
     
     return len(missing_packages) == 0, missing_packages
 
 def performance_benchmarks():
     """Run performance benchmarks"""
-    print("\n⚡ PERFORMANCE BENCHMARKS")
+    print("\nPERFORMANCE BENCHMARKS")
     print("-" * 28)
     
     benchmarks = {}
     
     # Test ABD calculation performance
     print("Benchmarking ABD matrix calculation... ", end="", flush=True)
-    try:
-        start_time = time.time()
-        result = subprocess.run("py validation_test_1_2.py", shell=True, 
-                              capture_output=True, text=True, timeout=30)
-        end_time = time.time()
-        
-        if result.returncode == 0:
-            calc_time = end_time - start_time
-            print(f"✅ {calc_time:.2f}s")
-            benchmarks['abd_calculation'] = calc_time
-        else:
-            print("FAILED")
+    validation_file = project_dir / "validation_test_1_2.py"
+    if validation_file.exists():
+        try:
+            start_time = time.time()
+            result = subprocess.run('".venv/Scripts/python.exe" validation_test_1_2.py', shell=True, 
+                                  capture_output=True, text=True, timeout=30)
+            end_time = time.time()
+            
+            if result.returncode == 0:
+                calc_time = end_time - start_time
+                print(f"SUCCESS {calc_time:.2f}s")
+                benchmarks['abd_calculation'] = calc_time
+            else:
+                print("FAILED")
+                benchmarks['abd_calculation'] = None
+        except subprocess.TimeoutExpired:
+            print("TIMEOUT")
             benchmarks['abd_calculation'] = None
-    except subprocess.TimeoutExpired:
-        print("❌ TIMEOUT")
+    else:
+        print("SKIPPED (validation file not found)")
         benchmarks['abd_calculation'] = None
     
     # Test GUI startup (simulated)
     print("GUI startup simulation... ", end="", flush=True)
     startup_time = 2.5  # Simulated based on typical startup
-    print(f"✅ {startup_time:.2f}s")
+    print(f"SUCCESS {startup_time:.2f}s")
     benchmarks['gui_startup'] = startup_time
     
     return benchmarks
 
 def generate_software_manifest():
     """Generate software manifest with all components"""
-    print("\n📋 GENERATING SOFTWARE MANIFEST")
+    print("\nGENERATING SOFTWARE MANIFEST")
     print("-" * 35)
     
     manifest = {
@@ -205,12 +214,12 @@ def generate_software_manifest():
     with open(manifest_path, 'w') as f:
         json.dump(manifest, f, indent=2)
     
-    print(f"✅ Manifest saved to: {manifest_path}")
+    print(f"Manifest saved to: {manifest_path}")
     return manifest
 
 def create_distribution_package():
     """Create distribution package"""
-    print("\n📦 CREATING DISTRIBUTION PACKAGE")
+    print("\nCREATING DISTRIBUTION PACKAGE")
     print("-" * 35)
     
     # Create distribution directory
@@ -239,12 +248,12 @@ def create_distribution_package():
         if src_path.exists():
             if src_path.is_dir():
                 shutil.copytree(src_path, dest_path, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
-                print(f"✅ Copied directory: {item}")
+                print(f"Copied directory: {item}")
             else:
                 shutil.copy2(src_path, dest_path)
-                print(f"✅ Copied file: {item}")
+                print(f"Copied file: {item}")
         else:
-            print(f"❌ Missing: {item}")
+            print(f"Missing: {item}")
     
     # Create startup batch file for Windows
     batch_content = '''@echo off
@@ -266,7 +275,7 @@ if errorlevel 1 (
     with open(dist_dir / "start_panel_flutter.bat", 'w') as f:
         f.write(batch_content)
     
-    print("✅ Created Windows startup script")
+    print("Created Windows startup script")
     
     # Create README for distribution
     readme_content = '''# Panel Flutter Analysis Tool v1.0
@@ -301,24 +310,24 @@ For help and support, press F1 in the application or refer to the built-in help 
     with open(dist_dir / "README.txt", 'w') as f:
         f.write(readme_content)
     
-    print("✅ Created distribution README")
+    print("Created distribution README")
     
     return dist_dir
 
 def final_verification():
     """Perform final verification of the distribution"""
-    print("\n🔍 FINAL VERIFICATION")
+    print("\nFINAL VERIFICATION")
     print("-" * 21)
     
     # Test that the main application can be imported
     print("Testing application import... ", end="", flush=True)
     try:
         sys.path.insert(0, str(project_dir / "src"))
-        from gui.main_window import PanelFlutterAnalysisGUI
-        print("✅ SUCCESS")
+        from gui.main_app import PanelFlutterApp
+        print("SUCCESS")
         import_success = True
     except Exception as e:
-        print(f"❌ FAILED: {e}")
+        print(f"FAILED: {e}")
         import_success = False
     
     # Verify key algorithms
@@ -337,10 +346,10 @@ def final_verification():
             print("SUCCESS")
             abd_success = True
         else:
-            print("❌ FAILED: Unreasonable result")
+            print("FAILED: Unreasonable result")
             abd_success = False
     except Exception as e:
-        print(f"❌ FAILED: {e}")
+        print(f"FAILED: {e}")
         abd_success = False
     
     return import_success and abd_success
@@ -370,49 +379,49 @@ def main():
     verification_success = final_verification()
     
     # Generate final report
-    print("\n📊 FINALIZATION SUMMARY")
+    print("\nFINALIZATION SUMMARY")
     print("=" * 30)
     
     all_tests_passed = all(test_results.values())
     
-    print(f"✅ Tests Passed: {'YES' if all_tests_passed else 'NO'}")
-    print(f"✅ Components Valid: {'YES' if components_valid else 'NO'}")
-    print(f"✅ Dependencies Available: {'YES' if deps_available else 'NO'}")
-    print(f"✅ Final Verification: {'YES' if verification_success else 'NO'}")
+    print(f"Tests Passed: {'YES' if all_tests_passed else 'NO'}")
+    print(f"Components Valid: {'YES' if components_valid else 'NO'}")
+    print(f"Dependencies Available: {'YES' if deps_available else 'NO'}")
+    print(f"Final Verification: {'YES' if verification_success else 'NO'}")
     
     if missing_deps:
-        print(f"⚠️  Missing Dependencies: {', '.join(missing_deps)}")
+        print(f"WARNING: Missing Dependencies: {', '.join(missing_deps)}")
     
     # Performance summary
     if benchmarks.get('abd_calculation'):
-        print(f"⚡ ABD Calculation: {benchmarks['abd_calculation']:.2f}s")
+        print(f"ABD Calculation: {benchmarks['abd_calculation']:.2f}s")
     if benchmarks.get('gui_startup'):
-        print(f"⚡ GUI Startup (est.): {benchmarks['gui_startup']:.2f}s")
+        print(f"GUI Startup (est.): {benchmarks['gui_startup']:.2f}s")
     
-    print(f"\n📦 Distribution Package: {dist_dir}")
+    print(f"\nDistribution Package: {dist_dir}")
     
     # Overall status
     overall_success = (all_tests_passed and components_valid and 
                       deps_available and verification_success)
     
     if overall_success:
-        print("\n🎉 SOFTWARE FINALIZATION COMPLETED SUCCESSFULLY!")
-        print("✅ The Panel Flutter Analysis Tool is ready for distribution")
-        print(f"✅ Package location: {dist_dir}")
-        print("\n🚀 Key Features Validated:")
-        print("   • Advanced flutter analysis methods")
-        print("   • Professional GUI with modern design") 
-        print("   • Comprehensive material modeling")
-        print("   • Classical Laminate Theory implementation")
-        print("   • ABD matrix calculation (100% validated)")
-        print("   • Complete test suite (100% pass rate)")
-        print("   • In-application help system")
-        print("   • Export and reporting capabilities")
+        print("\nSOFTWARE FINALIZATION COMPLETED SUCCESSFULLY!")
+        print("The Panel Flutter Analysis Tool is ready for distribution")
+        print(f"Package location: {dist_dir}")
+        print("\nKey Features Validated:")
+        print("   - Advanced flutter analysis methods")
+        print("   - Professional GUI with modern design") 
+        print("   - Comprehensive material modeling")
+        print("   - Classical Laminate Theory implementation")
+        print("   - ABD matrix calculation (100% validated)")
+        print("   - Complete test suite (100% pass rate)")
+        print("   - In-application help system")
+        print("   - Export and reporting capabilities")
         
         return 0
     else:
-        print("\n❌ SOFTWARE FINALIZATION INCOMPLETE")
-        print("⚠️  Some components need attention before distribution")
+        print("\nSOFTWARE FINALIZATION INCOMPLETE")
+        print("Some components need attention before distribution")
         
         if not all_tests_passed:
             print("   • Fix failing tests")
@@ -433,16 +442,16 @@ if __name__ == "__main__":
         print("=" * 60)
         
         if exit_code == 0:
-            print("🎯 SUCCESS: Software is ready for production use!")
+            print("SUCCESS: Software is ready for production use!")
         else:
-            print("🔧 ATTENTION: Additional work needed before release")
+            print("ATTENTION: Additional work needed before release")
             
         input("\nPress Enter to exit...")
         sys.exit(exit_code)
         
     except KeyboardInterrupt:
-        print("\n\n⚠️  Finalization interrupted by user")
+        print("\n\nFinalization interrupted by user")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ Fatal error during finalization: {e}")
+        print(f"\nFatal error during finalization: {e}")
         sys.exit(1)

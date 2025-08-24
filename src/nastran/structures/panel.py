@@ -118,7 +118,9 @@ class IsotropicPlate(StructuralPlate):
         self.mat = mat
 
     def _generate_material(self) -> None:
-        self.bdf._add_structural_material_object(self.mat.to_mat1())
+        # Use add_mat1 method instead of deprecated _add_structural_material_object
+        mat1 = self.mat.to_mat1()
+        self.bdf.materials[mat1.mid] = mat1
         
     def _generate_property(self) -> None:
         self.bdf.properties[self.pid] = self.prop
@@ -140,7 +142,8 @@ class LaminatedStructuralPlate(StructuralPlate):
         mids = list(set(self.ply.mids)) # unique
         for mid in mids:
             mat = self.ply.get_mat(mid)
-            self.bdf._add_structural_material_object(mat.to_mat8())
+            mat8 = mat.to_mat8()
+            self.bdf.materials[mat8.mid] = mat8
             # if mat.alpha1 or mat.alpha2:
                 # self.bdf._add_thermal_material_object(mat.to_mat5())
 
