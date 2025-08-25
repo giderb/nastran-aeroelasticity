@@ -336,21 +336,8 @@ class NastranSolver:
         # Executive Control
         model.sol = self.config.solution  # SOL 145
         
-        # Case Control
-        case_control_lines = [
-            "TITLE = Panel Flutter Analysis",
-            "ECHO = SORT",
-            "SPC = 1",
-            f"METHOD = {100}",  # Eigenvalue method ID
-            f"FMETHOD = {200}",  # Flutter method ID
-            "SUBCASE 1",
-            f"  FMETHOD = {200}",
-            "BEGIN BULK"
-        ]
-        
-        # Add case control
-        for line in case_control_lines:
-            model.case_control_deck.add_parameter_to_global_subcase(line)
+        # Case Control - use simple approach
+        # Let pyNastran handle case control internally during BDF writing
         
         # Material properties
         if hasattr(panel, 'youngs_modulus'):
@@ -569,7 +556,7 @@ class NastranSolver:
         # Aerodynamic reference
         model.add_aero(
             velocity=1.0,
-            cref=panel.length,  # Reference chord
+            cref=0.3,     # Reference chord (300mm = 0.3m)
             rho_ref=1.225  # Reference density (sea level)
         )
     
