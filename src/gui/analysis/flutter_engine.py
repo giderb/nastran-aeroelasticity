@@ -243,7 +243,36 @@ class FlutterAnalysisEngine:
                 self.logger.info("NASTRAN method requested - using verified NASTRAN solver")
                 if progress_callback:
                     progress_callback("Files saved to project directory", 95)
-                return self._run_nastran_analysis(progress_callback)
+                nastran_results = self._run_nastran_analysis(progress_callback)
+                
+                # Check for created BDF files after NASTRAN analysis
+                if progress_callback:
+                    progress_callback("Checking for saved BDF files...", 98)
+                
+                project_dir = Path.cwd()
+                bdf_files = list(project_dir.glob("nastran_*analysis*.bdf"))
+                recent_bdf_files = []
+                
+                # Find files created in the last 5 minutes
+                import time
+                current_time = time.time()
+                for bdf_file in bdf_files:
+                    file_time = bdf_file.stat().st_mtime
+                    if (current_time - file_time) < 300:  # 5 minutes
+                        recent_bdf_files.append(bdf_file)
+                
+                if recent_bdf_files:
+                    self.logger.info(f"Found {len(recent_bdf_files)} recently created BDF files:")
+                    for bdf_file in recent_bdf_files:
+                        self.logger.info(f"  - {bdf_file} ({bdf_file.stat().st_size} bytes)")
+                    if progress_callback:
+                        progress_callback(f"Created {len(recent_bdf_files)} BDF files in project directory", 99)
+                else:
+                    self.logger.warning("No recent BDF files found in project directory")
+                    if progress_callback:
+                        progress_callback("No BDF files found - check project directory", 99)
+                
+                return nastran_results
             else:
                 # Use simulation mode for other methods
                 self.logger.info("Using simulation mode for flutter analysis")

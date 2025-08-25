@@ -653,32 +653,56 @@ class NastranSolver:
         self.logger.info("Running NASTRAN simulation mode")
         
         # Create BDF file for simulation mode
+        bdf_saved_successfully = False
         try:
             from datetime import datetime
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            import time
+            # Use microseconds to avoid duplicate timestamps
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S") + f"_{int(time.time() * 1000) % 1000:03d}"
+            
+            self.logger.info("Starting BDF file creation for simulation mode")
+            
+            # Use absolute path for project directory
+            project_dir = Path(__file__).parent.parent.parent.absolute()
+            self.logger.info(f"Project directory: {project_dir}")
             
             # Create a temporary directory just for BDF generation
             import tempfile
             temp_dir = tempfile.mkdtemp(prefix="nastran_sim_")
             self.temp_dir = temp_dir
+            self.logger.info(f"Created temp directory: {temp_dir}")
             
             # Generate BDF file using same method as real NASTRAN
             bdf_path = self._generate_bdf_file(panel, flow, velocity_range, num_points)
+            self.logger.info(f"Generated BDF at: {bdf_path}")
             
-            # Copy BDF to project directory
-            project_dir = Path.cwd()
-            saved_bdf = project_dir / f"nastran_analysis_{timestamp}.bdf"
+            # Copy BDF to project directory with absolute path
+            saved_bdf = project_dir / f"nastran_gui_analysis_{timestamp}.bdf"
             import shutil
             shutil.copy2(bdf_path, saved_bdf)
             
-            self.logger.info(f"Simulation mode BDF saved: {saved_bdf}")
+            # Verify the file was created
+            if saved_bdf.exists():
+                file_size = saved_bdf.stat().st_size
+                self.logger.info(f"SUCCESS: GUI BDF saved - {saved_bdf} ({file_size} bytes)")
+                bdf_saved_successfully = True
+            else:
+                self.logger.error(f"FAILED: BDF file not found at {saved_bdf}")
             
             # Clean up temp directory
             shutil.rmtree(temp_dir)
             self.temp_dir = None
             
         except Exception as e:
-            self.logger.warning(f"Could not save simulation mode BDF: {e}")
+            self.logger.error(f"BDF saving failed with error: {e}")
+            import traceback
+            self.logger.error(f"Stack trace: {traceback.format_exc()}")
+        
+        # Report success/failure
+        if bdf_saved_successfully:
+            self.logger.info("GUI BDF file creation: SUCCESS")
+        else:
+            self.logger.warning("GUI BDF file creation: FAILED")
         
         # Generate velocity points
         velocities = np.linspace(velocity_range[0], velocity_range[1], num_points)
