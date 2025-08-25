@@ -182,44 +182,93 @@ class MainController:
         self.view.update_status("Analysis running...")
         
     def _run_analysis_thread(self):
-        """Run analysis in background thread."""
+        """Run analysis in background thread using the proper flutter engine."""
         try:
             self.logger.info("Starting panel flutter analysis")
             
-            # Create analysis model
-            analysis_model = self._create_analysis_model()
+            # Get analysis parameters from GUI
+            analysis_params = self.model.get_analysis_parameters()
+            geometry = self.model.get_geometry()
+            materials = self.model.get_materials()
             
-            # Update progress
-            self.view.root.after(0, lambda: self.view.set_progress(20))
+            # Get selected solver method from GUI
+            solver_method = analysis_params.get('solver_method', 'auto')
+            self.logger.info(f"Analysis method selected: {solver_method}")
             
-            # Generate NASTRAN input
-            analysis_model.write_cards()
-            self.view.root.after(0, lambda: self.view.set_progress(40))
+            # Import the flutter analysis system
+            from gui.analysis.flutter_engine import (
+                FlutterAnalysisEngine, FlutterAnalysisConfig, 
+                GeometryConfig, MaterialConfig
+            )
+            from gui.analysis.analysis_runner import AnalysisRunner
             
-            # Export BDF for analysis
-            bdf_file = "temp_analysis.bdf"
-            analysis_model.export_to_bdf(bdf_file)
-            self.view.root.after(0, lambda: self.view.set_progress(60))
+            # Create configuration objects
+            config = FlutterAnalysisConfig(
+                method=solver_method if solver_method == 'nastran' else 'simulation',
+                aerodynamic_theory=solver_method if solver_method == 'nastran' else analysis_params.get('aero_theory', 'Piston'),
+                velocity_min=float(analysis_params.get('velocity_min', 50)),
+                velocity_max=float(analysis_params.get('velocity_max', 300)),
+                velocity_points=int(analysis_params.get('velocity_points', 25)),
+                num_modes=int(analysis_params.get('num_modes', 10))
+            )
             
-            # Run NASTRAN (this would be actual NASTRAN execution)
-            # For now, simulate analysis time
-            for i in range(5):
-                time.sleep(1)
-                progress = 60 + (i + 1) * 8
-                self.view.root.after(0, lambda p=progress: self.view.set_progress(p))
+            # Convert GUI geometry to engine format
+            geometry_config = GeometryConfig(
+                length=float(geometry.get('length', 0.5)),
+                width=float(geometry.get('width', 0.3)),
+                thickness=float(geometry.get('thickness', 0.002)),
+                boundary_conditions=geometry.get('boundary_conditions', 'SSSS')
+            )
+            
+            # Convert GUI materials to engine format
+            material = materials[0] if materials else {}
+            material_config = MaterialConfig(
+                material_type='isotropic',
+                youngs_modulus=float(material.get('youngs_modulus', 71.7e9)),
+                poisson_ratio=float(material.get('poisson_ratio', 0.33)),
+                density=float(material.get('density', 2810))
+            )
+            
+            # Progress callback to update GUI
+            def progress_callback(step, progress):
+                self.view.root.after(0, lambda: self.view.set_progress(progress))
+                self.view.root.after(0, lambda: self.view.update_status(step))
+            
+            # Create and run analysis
+            runner = AnalysisRunner(progress_callback)
+            results = runner.run_flutter_analysis(config, geometry_config, material_config)
+            
+            # Update model with results
+            if results.analysis_successful:
+                self.model.set_results({
+                    'flutter_velocity': results.flutter_velocity,
+                    'flutter_frequency': results.flutter_frequency,
+                    'flutter_mode': results.flutter_mode,
+                    'velocities': results.velocities.tolist() if results.velocities is not None else [],
+                    'frequencies': results.frequencies.tolist() if results.frequencies is not None else [],
+                    'dampings': results.dampings.tolist() if results.dampings is not None else [],
+                    'analysis_method': solver_method,
+                    'success': True
+                })
                 
-            # Load results (simulate)
-            results = self._load_analysis_results()
-            self.model.set_results(results)
+                self.view.root.after(0, lambda: self.view.update_status("Analysis completed successfully"))
+                self.logger.info(f"Analysis completed successfully using {solver_method} method")
+                
+                if results.flutter_velocity:
+                    self.logger.info(f"Flutter speed: {results.flutter_velocity:.1f} m/s at {results.flutter_frequency:.1f} Hz")
+                else:
+                    self.logger.info("No flutter detected in velocity range")
+            else:
+                error_msg = results.error_message or "Analysis failed"
+                self.view.root.after(0, lambda: messagebox.showerror("Analysis Error", error_msg))
+                self.view.root.after(0, lambda: self.view.update_status("Analysis failed"))
+                self.logger.error(f"Analysis failed: {error_msg}")
             
             self.view.root.after(0, lambda: self.view.set_progress(100))
-            self.view.root.after(0, lambda: self.view.update_status("Analysis completed successfully"))
             self.view.root.after(0, self.update_view_state)
             
-            self.logger.info("Analysis completed successfully")
-            
         except Exception as e:
-            self.logger.error(f"Analysis failed: {str(e)}")
+            self.logger.error(f"Analysis failed: {str(e)}", exc_info=True)
             self.view.root.after(0, lambda: messagebox.showerror("Analysis Error", f"Analysis failed: {str(e)}"))
             self.view.root.after(0, lambda: self.view.update_status("Analysis failed"))
             
