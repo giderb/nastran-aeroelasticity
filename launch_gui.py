@@ -2067,43 +2067,44 @@ to give you confidence levels and validation.
         """Run traditional NASTRAN analysis"""
         try:
             # Create analysis configuration from GUI inputs
+            # Map to actual existing GUI variables
             config = FlutterAnalysisConfig(
-                method=getattr(self, 'analysis_method', tk.StringVar(value="PK")).get(),
-                aerodynamic_theory=getattr(self, 'aero_theory', tk.StringVar(value="Piston")).get(),
-                mach_min=float(getattr(self, 'mach_min_var', tk.StringVar(value="0.3")).get()),
-                mach_max=float(getattr(self, 'mach_max_var', tk.StringVar(value="2.0")).get()),
-                altitude=float(getattr(self, 'altitude_var', tk.StringVar(value="10000")).get()),
-                dynamic_pressure=float(getattr(self, 'dynamic_pressure_var', tk.StringVar(value="1000")).get()),
-                num_modes=int(getattr(self, 'num_modes_var', tk.StringVar(value="20")).get()),
-                max_frequency=float(getattr(self, 'max_freq_var', tk.StringVar(value="1000")).get()),
-                convergence_tolerance=float(getattr(self, 'conv_tolerance_var', tk.StringVar(value="1e-6")).get()),
-                max_iterations=int(getattr(self, 'max_iter_var', tk.StringVar(value="100")).get()),
-                eigen_solver=getattr(self, 'eigen_solver', tk.StringVar(value="LANCZOS")).get(),
-                use_parallel=getattr(self, 'use_parallel', tk.BooleanVar(value=True)).get(),
+                method='nastran',  # Force NASTRAN method
+                aerodynamic_theory='nastran',  # Force NASTRAN aerodynamics
+                mach_min=0.3,  # Use sensible defaults since these specific vars don't exist
+                mach_max=2.0,
+                altitude=10000.0,
+                dynamic_pressure=None,  # Will be calculated
+                num_modes=20,
+                max_frequency=1000.0,
+                convergence_tolerance=1e-6,
+                max_iterations=100,
+                eigen_solver='LANCZOS',
+                use_parallel=True,
                 velocity_min=float(getattr(self, 'vmin_var', tk.StringVar(value="50")).get()),
-                velocity_max=float(getattr(self, 'vmax_var', tk.StringVar(value="300")).get())
+                velocity_max=float(getattr(self, 'vmax_var', tk.StringVar(value="300")).get()),
+                velocity_points=25  # Use reasonable default
             )
             
             # Create geometry configuration from GUI inputs  
             geometry = GeometryConfig(
-                length=float(getattr(self, 'length_var', tk.StringVar(value="500.0")).get()) / 1000.0,  # Convert mm to m
-                width=float(getattr(self, 'width_var', tk.StringVar(value="300.0")).get()) / 1000.0,  # Convert mm to m
-                thickness=float(self.thickness_var.get()) / 1000.0,  # Convert mm to m
-                num_elements_x=int(getattr(self, 'num_elem_x_var', tk.StringVar(value="10")).get()),
-                num_elements_y=int(getattr(self, 'num_elem_y_var', tk.StringVar(value="5")).get()),
-                boundary_conditions=self.get_boundary_condition_code()
+                length=float(getattr(self, 'length_var', tk.StringVar(value="1.0")).get()),  # Already in meters
+                width=float(getattr(self, 'width_var', tk.StringVar(value="0.5")).get()),   # Already in meters
+                thickness=float(getattr(self, 'thickness_var', tk.StringVar(value="0.002")).get()) / 1000.0,  # Convert mm to m
+                boundary_conditions=self.get_boundary_condition_code() if hasattr(self, 'get_boundary_condition_code') else 'SSSS'
             )
             
             # Create material configuration from GUI inputs
-            material_type = getattr(self, 'material_type', tk.StringVar(value="isotropic")).get()
+            material_type = getattr(self, 'material_type_var', tk.StringVar(value="isotropic")).get()
             if material_type == "isotropic":
                 material = MaterialConfig(
                     material_type="isotropic",
-                    youngs_modulus=float(getattr(self, 'youngs_var', tk.StringVar(value="2.1e11")).get()),
-                    poisson_ratio=float(getattr(self, 'poisson_var', tk.StringVar(value="0.3")).get()),
-                    density=float(getattr(self, 'density_var', tk.StringVar(value="7850")).get())
+                    youngs_modulus=float(getattr(self, 'youngs_var', tk.StringVar(value="7.0e10")).get()),
+                    poisson_ratio=float(getattr(self, 'poisson_var', tk.StringVar(value="0.33")).get()),
+                    density=float(getattr(self, 'density_var', tk.StringVar(value="2700")).get())
                 )
             else:
+                # Use orthotropic properties if available
                 material = MaterialConfig(
                     material_type="orthotropic",
                     e1=float(getattr(self, 'e1_var', tk.StringVar(value="1.5e11")).get()),
@@ -2115,21 +2116,24 @@ to give you confidence levels and validation.
                     nu12=float(getattr(self, 'nu12_var', tk.StringVar(value="0.3")).get()),
                     nu13=float(getattr(self, 'nu13_var', tk.StringVar(value="0.3")).get()),
                     nu23=float(getattr(self, 'nu23_var', tk.StringVar(value="0.4")).get()),
-                    density=float(getattr(self, 'density_var', tk.StringVar(value="7850")).get())
+                    density=float(getattr(self, 'density_var', tk.StringVar(value="2700")).get())
                 )
             
             # Progress callback for updating GUI
             def progress_callback(step: str, progress: float):
-                if hasattr(self, 'stop_button') and self.stop_button.cget('state') == 'disabled':
+                if hasattr(self, 'stop_requested') and self.stop_requested:
                     return False  # Signal to stop
                 
                 # Update GUI elements safely in main thread
-                self.root.after(0, lambda p=progress: self.progress_var.set(p))
-                self.root.after(0, lambda s=step: self.progress_label.config(text=s))
-                self.root.after(0, lambda p=progress: self.status_var.set(f"⚡ Analyzing... {p:.0f}%"))
+                if hasattr(self, 'progress_var'):
+                    self.root.after(0, lambda p=progress: self.progress_var.set(p))
+                if hasattr(self, 'progress_label'):
+                    self.root.after(0, lambda s=step: self.progress_label.config(text=s))
+                if hasattr(self, 'status_var'):
+                    self.root.after(0, lambda p=progress: self.status_var.set(f"NASTRAN Analysis... {p:.0f}%"))
                 
                 # Log progress to analysis log if available
-                if hasattr(self, 'log_text'):
+                if hasattr(self, 'log_text') and hasattr(self, '_log_message'):
                     timestamp = time.strftime("%H:%M:%S")
                     log_msg = f"[{timestamp}] {step}"
                     self.root.after(0, lambda msg=log_msg: self._log_message(msg))
@@ -2143,130 +2147,61 @@ to give you confidence levels and validation.
             if results.analysis_successful:
                 # Generate analysis summary
                 summary = ResultsAnalyzer.generate_summary_report(results)
-                if hasattr(self, 'log_text'):
+                if hasattr(self, 'log_text') and hasattr(self, '_log_message'):
                     self.root.after(0, lambda: self._log_message("\n" + summary))
                 
                 # Update GUI with results
-                self.root.after(0, lambda: self._update_results(
-                    results.velocities, 
-                    results.frequencies, 
-                    results.dampings,
-                    results.flutter_velocity, 
-                    results.flutter_frequency
-                ))
+                if hasattr(self, '_update_results'):
+                    self.root.after(0, lambda: self._update_results(
+                        results.velocities, 
+                        results.frequencies, 
+                        results.dampings,
+                        results.flutter_velocity, 
+                        results.flutter_frequency
+                    ))
+                
+                # Update status
+                if results.flutter_velocity:
+                    status_msg = f"NASTRAN Complete: Flutter at {results.flutter_velocity:.1f} m/s"
+                else:
+                    status_msg = "NASTRAN Complete: Structure stable"
+                    
+                if hasattr(self, 'status_var'):
+                    self.root.after(0, lambda: self.status_var.set(status_msg))
+                    
             else:
                 # Handle analysis failure
-                error_msg = f"Analysis failed: {results.error_message}"
-                self.root.after(0, lambda: self._log_message(f"ERROR: {error_msg}"))
-                self.root.after(0, lambda: messagebox.showerror("Analysis Error", error_msg))
+                error_msg = f"NASTRAN analysis failed: {results.error_message or 'Unknown error'}"
+                if hasattr(self, '_log_message'):
+                    self.root.after(0, lambda: self._log_message(f"ERROR: {error_msg}"))
+                if hasattr(self, 'root'):
+                    self.root.after(0, lambda: messagebox.showerror("NASTRAN Analysis Error", error_msg))
                 
                 # Show empty results
-                self.root.after(0, lambda: self.plot_empty_results())
-            
-        except ImportError as e:
-            # Fallback to simulation mode if advanced modules not available
-            self.root.after(0, lambda: self._log_message(f"Advanced analysis not available: {e}"))
-            self.root.after(0, lambda: self._log_message("Falling back to simulation mode..."))
-            self._run_simulation_analysis()
-            
-        except AttributeError as e:
-            # Handle missing attributes in GUI gracefully
-            error_msg = f"GUI configuration error: {str(e)}"
-            self.root.after(0, lambda: self._log_message(f"ERROR: {error_msg}"))
-            self.root.after(0, lambda: self._log_message("Falling back to simulation mode..."))
-            self._run_simulation_analysis()
+                if hasattr(self, 'plot_empty_results'):
+                    self.root.after(0, lambda: self.plot_empty_results())
             
         except Exception as e:
-            error_msg = f"Unexpected error: {str(e)}"
-            self.root.after(0, lambda: self._log_message(f"ERROR: {error_msg}"))
-            self.root.after(0, lambda: messagebox.showerror("Analysis Error", error_msg))
+            error_msg = f"NASTRAN analysis configuration error: {str(e)}"
+            print(f"ERROR: {error_msg}")
+            import traceback
+            traceback.print_exc()
             
-        finally:
-            self.root.after(0, lambda: self.run_button.config(state='normal'))
-            self.root.after(0, lambda: self.stop_button.config(state='disabled'))
-            self.root.after(0, lambda: self.progress_var.set(0))
-            self.root.after(0, lambda: self.progress_label.config(text="Analysis complete"))
-    
-    def _run_simulation_analysis(self):
-        """Fallback simulation analysis when advanced engine is not available"""
-        analysis_steps = [
-            "Building structural model...",
-            "Setting up aerodynamic model...", 
-            "Generating matrices...",
-            "Solving eigenvalue problem...",
-            "Computing flutter boundaries...",
-            "Post-processing results...",
-            "Finalizing analysis..."
-        ]
+            # Update GUI with error
+            if hasattr(self, 'status_var'):
+                self.root.after(0, lambda: self.status_var.set(f"Error: {str(e)}"))
+            if hasattr(self, '_log_message'):
+                self.root.after(0, lambda: self._log_message(f"ERROR: {error_msg}"))
+            if hasattr(self, 'root'):
+                self.root.after(0, lambda: messagebox.showerror("Configuration Error", error_msg))
         
-        try:
-            # Simulate analysis progress with realistic steps
-            for i, step in enumerate(analysis_steps):
-                if not hasattr(self, 'stop_button') or self.stop_button.cget('state') == 'disabled':
-                    break
-                    
-                progress = (i + 1) / len(analysis_steps) * 100
-                self.root.after(0, lambda p=progress: self.progress_var.set(p))
-                self.root.after(0, lambda s=step: self.progress_label.config(text=s))
-                self.root.after(0, lambda p=progress: self.status_var.set(f"⚡ Analyzing... {p:.0f}%"))
-                
-                if hasattr(self, 'log_text'):
-                    timestamp = time.strftime("%H:%M:%S")
-                    log_msg = f"[{timestamp}] {step}"
-                    self.root.after(0, lambda msg=log_msg: self._log_message(msg))
-                
-                time.sleep(0.8)
-                
-            # Generate simulated results with safe defaults
-            try:
-                vmin = float(getattr(self, 'vmin_var', tk.StringVar(value="50")).get())
-            except:
-                vmin = 50.0
-            try:
-                vmax = float(getattr(self, 'vmax_var', tk.StringVar(value="300")).get())
-            except:
-                vmax = 300.0
-                
-            velocities = np.linspace(vmin, vmax, 25)
-            
-            # Simulate more realistic flutter analysis results
-            frequencies = 8.0 + 0.05 * velocities + 0.0008 * velocities**2
-            dampings = 0.12 - 0.0015 * velocities + 0.00008 * velocities**1.8
-            
-            # Add some noise for realism
-            frequencies += np.random.normal(0, 0.1, len(frequencies))
-            dampings += np.random.normal(0, 0.005, len(dampings))
-            
-            # Find flutter point (where damping crosses zero)
-            flutter_idx = np.where(dampings <= 0)[0]
-            if len(flutter_idx) > 0:
-                flutter_speed = velocities[flutter_idx[0]]
-                flutter_freq = frequencies[flutter_idx[0]]
-            else:
-                flutter_speed = None
-                flutter_freq = None
-            
-            # Log simulation summary
-            if hasattr(self, 'log_text'):
-                if flutter_speed:
-                    summary_msg = f"Flutter detected at {flutter_speed:.1f} m/s, {flutter_freq:.2f} Hz"
-                else:
-                    summary_msg = "No flutter detected in analysis range"
-                self.root.after(0, lambda: self._log_message(f"RESULT: {summary_msg}"))
-                
-            # Update GUI in main thread
-            self.root.after(0, lambda: self._update_results(velocities, frequencies, dampings, 
-                                                          flutter_speed, flutter_freq))
-            
-        except Exception as e:
-            self.root.after(0, lambda: messagebox.showerror("Analysis Error", f"Error: {str(e)}"))
-    
-    def _log_message(self, message):
-        """Add message to analysis log"""
-        if hasattr(self, 'log_text'):
-            self.log_text.insert(tk.END, message + "\n")
-            self.log_text.see(tk.END)
-            
+        finally:
+            # Re-enable buttons
+            if hasattr(self, 'run_button'):
+                self.root.after(0, lambda: self.run_button.config(state='normal'))
+            if hasattr(self, 'stop_button'):
+                self.root.after(0, lambda: self.stop_button.config(state='disabled'))
+
     def _update_results(self, velocities, frequencies, dampings, flutter_speed, flutter_freq):
         """Update beautiful results display"""
         # Update summary with modern styling
