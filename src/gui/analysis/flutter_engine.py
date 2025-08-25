@@ -241,6 +241,8 @@ class FlutterAnalysisEngine:
             
             if use_nastran:
                 self.logger.info("NASTRAN method requested - using verified NASTRAN solver")
+                if progress_callback:
+                    progress_callback("Files saved to project directory", 95)
                 return self._run_nastran_analysis(progress_callback)
             else:
                 # Use simulation mode for other methods

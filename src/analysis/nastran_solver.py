@@ -319,6 +319,8 @@ class NastranSolver:
             self.logger.error(f"NASTRAN analysis failed: {e}")
             raise
         finally:
+            # Save files to project directory before cleanup
+            self._save_analysis_files()
             self._cleanup()
     
     def _generate_bdf_file(self, panel: 'PanelProperties', flow: 'FlowConditions',
@@ -650,6 +652,34 @@ class NastranSolver:
         
         self.logger.info("Running NASTRAN simulation mode")
         
+        # Create BDF file for simulation mode
+        try:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Create a temporary directory just for BDF generation
+            import tempfile
+            temp_dir = tempfile.mkdtemp(prefix="nastran_sim_")
+            self.temp_dir = temp_dir
+            
+            # Generate BDF file using same method as real NASTRAN
+            bdf_path = self._generate_bdf_file(panel, flow, velocity_range, num_points)
+            
+            # Copy BDF to project directory
+            project_dir = Path.cwd()
+            saved_bdf = project_dir / f"nastran_analysis_{timestamp}.bdf"
+            import shutil
+            shutil.copy2(bdf_path, saved_bdf)
+            
+            self.logger.info(f"Simulation mode BDF saved: {saved_bdf}")
+            
+            # Clean up temp directory
+            shutil.rmtree(temp_dir)
+            self.temp_dir = None
+            
+        except Exception as e:
+            self.logger.warning(f"Could not save simulation mode BDF: {e}")
+        
         # Generate velocity points
         velocities = np.linspace(velocity_range[0], velocity_range[1], num_points)
         results = []
@@ -716,6 +746,59 @@ class NastranSolver:
         self.logger.info(f"NASTRAN simulation found {len(results)} flutter points")
         return results
     
+    def _save_analysis_files(self):
+        """Save BDF and F06 files to project directory before cleanup"""
+        if not self.temp_dir or not Path(self.temp_dir).exists():
+            return
+        
+        project_dir = Path.cwd()  # Current working directory (project root)
+        temp_path = Path(self.temp_dir)
+        
+        # Create timestamped filenames to avoid overwrites
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        saved_files = []
+        
+        try:
+            # Save BDF file
+            bdf_files = list(temp_path.glob("*.bdf"))
+            for bdf_file in bdf_files:
+                if bdf_file.exists():
+                    saved_bdf = project_dir / f"nastran_analysis_{timestamp}.bdf"
+                    import shutil
+                    shutil.copy2(bdf_file, saved_bdf)
+                    saved_files.append(str(saved_bdf))
+                    self.logger.info(f"Saved BDF file: {saved_bdf}")
+            
+            # Save F06 file
+            f06_files = list(temp_path.glob("*.f06"))
+            for f06_file in f06_files:
+                if f06_file.exists():
+                    saved_f06 = project_dir / f"nastran_results_{timestamp}.f06"
+                    import shutil
+                    shutil.copy2(f06_file, saved_f06)
+                    saved_files.append(str(saved_f06))
+                    self.logger.info(f"Saved F06 file: {saved_f06}")
+            
+            # Save any other NASTRAN output files
+            other_files = list(temp_path.glob("*.op*")) + list(temp_path.glob("*.log"))
+            for other_file in other_files:
+                if other_file.exists() and other_file.stat().st_size > 0:
+                    saved_other = project_dir / f"nastran_{other_file.name}_{timestamp}"
+                    import shutil
+                    shutil.copy2(other_file, saved_other)
+                    saved_files.append(str(saved_other))
+                    self.logger.info(f"Saved NASTRAN file: {saved_other}")
+            
+            if saved_files:
+                self.logger.info(f"Analysis files saved to project directory: {len(saved_files)} files")
+            else:
+                self.logger.warning("No NASTRAN files found to save")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to save analysis files: {e}")
+
     def _cleanup(self):
         """Clean up temporary files"""
         if self.temp_dir and Path(self.temp_dir).exists():
