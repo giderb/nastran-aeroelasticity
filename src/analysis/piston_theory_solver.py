@@ -17,7 +17,22 @@ from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 import math
 
-from .boundary_conditions import BoundaryCondition, BoundaryConditionManager
+# Import boundary condition module for comprehensive support
+try:
+    from .boundary_conditions import BoundaryCondition, BoundaryConditionManager
+except ImportError:
+    try:
+        from boundary_conditions import BoundaryCondition, BoundaryConditionManager
+    except ImportError:
+        # Create dummy classes if not available
+        class BoundaryCondition:
+            SSSS = "SSSS"
+            CCCC = "CCCC"
+            CFFF = "CFFF"
+            FFFF = "FFFF"
+        
+        class BoundaryConditionManager:
+            pass
 
 # Simple implementations to replace scipy dependencies
 def simple_eig(A, B=None):

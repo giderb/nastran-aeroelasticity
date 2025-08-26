@@ -298,7 +298,12 @@ class FlutterAnalysisEngine:
                 progress_callback("Initializing NASTRAN solver...", 5)
             
             # Import the working NASTRAN solver
-            from analysis.nastran_solver import NastranSolver, NastranConfig
+            import sys
+            from pathlib import Path
+            analysis_path = Path(__file__).parent.parent.parent / 'analysis'
+            if str(analysis_path) not in sys.path:
+                sys.path.insert(0, str(analysis_path))
+            from nastran_solver import NastranSolver, NastranConfig
             
             # Create NASTRAN configuration
             nastran_config = NastranConfig(
