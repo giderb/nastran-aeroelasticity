@@ -27,21 +27,31 @@ import time
 import os
 import math
 
-# Import pyNastran for BDF creation
+# Import pyNastran and local NASTRAN library for BDF creation
 try:
     from pyNastran.bdf.bdf import BDF
-    from nastran.aero.analysis.flutter import FlutterAnalysisModel, FlutterSubcase
-    from nastran.aero.analysis.panel_flutter import (
-        PanelFlutterPistonAnalysisModel, 
-        PanelFlutterSubcase
-    )
-    from nastran.aero.superpanels import SuperAeroPanel1, SuperAeroPanel5
+    
+    # Import the professional NASTRAN library from src/nastran
+    import sys
+    from pathlib import Path
+    nastran_lib_path = Path(__file__).parent.parent / 'nastran'
+    if str(nastran_lib_path) not in sys.path:
+        sys.path.insert(0, str(nastran_lib_path))
+    
+    from aero.analysis.flutter import FlutterAnalysisModel, FlutterSubcase
+    from aero.superpanels import SuperAeroPanel5
+    from aero.panels import AeroPanel5
+    
     PYNASTRAN_AVAILABLE = True
+    NASTRAN_LIB_AVAILABLE = True
 except ImportError as e:
-    logging.warning(f"pyNastran not available: {e}")
-    PYNASTRAN_AVAILABLE = False
-    # Create dummy BDF class for type hints
+    logging.warning(f"NASTRAN libraries not available: {e}")
+    PYNASTRAN_AVAILABLE = False  
+    NASTRAN_LIB_AVAILABLE = False
+    # Create dummy classes for type hints
     class BDF:
+        pass
+    class FlutterAnalysisModel:
         pass
 
 @dataclass
@@ -325,12 +335,89 @@ class NastranSolver:
     
     def _generate_bdf_file(self, panel: 'PanelProperties', flow: 'FlowConditions',
                           velocity_range: Tuple[float, float], num_points: int) -> Path:
-        """Generate NASTRAN BDF input file"""
+        """Generate NASTRAN BDF input file using the professional library"""
         
         if not PYNASTRAN_AVAILABLE:
             raise ImportError("pyNastran not available for BDF generation")
         
         bdf_path = Path(self.temp_dir) / "flutter_analysis.bdf"
+        
+        # Try using the professional NASTRAN library first
+        if NASTRAN_LIB_AVAILABLE:
+            try:
+                return self._generate_bdf_with_nastran_lib(panel, flow, velocity_range, num_points, bdf_path)
+            except Exception as e:
+                self.logger.warning(f"Professional NASTRAN library failed: {e}")
+                self.logger.info("Falling back to manual BDF generation")
+        
+        # Fallback to manual BDF generation
+        return self._generate_bdf_manually(panel, flow, velocity_range, num_points, bdf_path)
+    
+    def _generate_bdf_with_nastran_lib(self, panel: 'PanelProperties', flow: 'FlowConditions',
+                                     velocity_range: Tuple[float, float], num_points: int, 
+                                     bdf_path: Path) -> Path:
+        """Generate BDF using the professional NASTRAN library"""
+        
+        self.logger.info("Using professional NASTRAN library for BDF generation")
+        
+        # Create flutter analysis model
+        flutter_model = FlutterAnalysisModel()
+        
+        # Set up global case parameters
+        flutter_model.global_case.method = 'PK'  # Use P-K method
+        flutter_model.global_case.densities_ratio = [1.0]  # Sea level density
+        flutter_model.global_case.machs = [flow.mach_number] if hasattr(flow, 'mach_number') else [0.8]
+        flutter_model.global_case.velocities = list(np.linspace(velocity_range[0], velocity_range[1], num_points))
+        flutter_model.global_case.reduced_frequencies = [0.001, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0]
+        flutter_model.global_case.frequency_limits = [self.config.frequency_range[0], self.config.frequency_range[1]]
+        flutter_model.global_case.n_modes = self.config.num_modes
+        flutter_model.global_case.ref_chord = panel.length
+        flutter_model.global_case.ref_rho = 1.225  # Sea level density
+        
+        # Create structural mesh
+        self._create_panel_mesh(flutter_model.model, panel)
+        
+        # Add boundary conditions  
+        self._add_boundary_conditions(flutter_model.model, panel)
+        
+        # Add material
+        flutter_model.model.add_mat1(
+            mid=1,
+            E=float(panel.youngs_modulus),
+            G=None,
+            nu=float(panel.poissons_ratio),
+            rho=float(panel.density)
+        )
+        
+        # Create aerodynamic superpanel using CAERO5 (piston theory)
+        p1 = [0.0, 0.0, 0.0]
+        p2 = [panel.length, 0.0, 0.0]  
+        p3 = [panel.length, panel.width, 0.0]
+        p4 = [0.0, panel.width, 0.0]
+        
+        aero_panel = SuperAeroPanel5(
+            eid=5000,
+            p1=p1, p2=p2, p3=p3, p4=p4,
+            nchord=4,  # 4 chordwise panels
+            nspan=8,   # 8 spanwise panels
+            theory='PISTON'
+        )
+        
+        # Write the flutter analysis cards
+        flutter_model._write_global_analysis_cards()
+        
+        # Write BDF file
+        flutter_model.model.write_bdf(str(bdf_path), enddata=True)
+        
+        self.logger.info(f"Generated BDF file using professional library: {bdf_path}")
+        return bdf_path
+    
+    def _generate_bdf_manually(self, panel: 'PanelProperties', flow: 'FlowConditions',
+                             velocity_range: Tuple[float, float], num_points: int,
+                             bdf_path: Path) -> Path:
+        """Generate BDF manually (fallback method)"""
+        
+        self.logger.info("Using manual BDF generation (fallback)")
         
         # Create NASTRAN model
         model = BDF()
@@ -338,18 +425,32 @@ class NastranSolver:
         # Executive Control
         model.sol = self.config.solution  # SOL 145
         
-        # Case Control - use simple approach
-        # Let pyNastran handle case control internally during BDF writing
+        # Case Control Deck - Required for NASTRAN analysis
+        from pyNastran.bdf.case_control_deck import CaseControlDeck
+        model.case_control_deck = CaseControlDeck([
+            'TITLE = Panel Flutter Analysis',
+            'ECHO = NONE',
+            'SUBCASE 1',
+            '    LABEL = Flutter Analysis',
+            '    METHOD = 100',
+            '    FMETHOD = 200',
+            '    SPC = 1',
+            '    DISPLACEMENT = ALL',
+            '    VELOCITY = ALL',
+            '    ACCELERATION = ALL',
+            '    SPCFORCES = ALL',
+            '    MPCFORCES = ALL'
+        ])
         
         # Material properties
         if hasattr(panel, 'youngs_modulus'):
             # Isotropic material
             model.add_mat1(
                 mid=1,
-                E=panel.youngs_modulus,
+                E=float(panel.youngs_modulus),
                 G=None,  # Will calculate G = E/(2*(1+nu))
-                nu=panel.poissons_ratio,
-                rho=panel.density
+                nu=float(panel.poissons_ratio),
+                rho=float(panel.density)
             )
         
         # Geometry - Create simple panel mesh
@@ -367,13 +468,13 @@ class NastranSolver:
             norm='MASS'
         )
         
-        # Flutter analysis setup
-        self._setup_flutter_analysis(model, flow, velocity_range, num_points)
+        # Flutter analysis setup - simplified approach without PAERO5 
+        self._setup_flutter_analysis_simple(model, panel, flow, velocity_range, num_points)
         
         # Write BDF file
         model.write_bdf(str(bdf_path), enddata=True)
         
-        self.logger.info(f"Generated BDF file: {bdf_path}")
+        self.logger.info(f"Generated BDF file manually: {bdf_path}")
         return bdf_path
     
     def _create_panel_mesh(self, model: BDF, panel: 'PanelProperties'):
@@ -412,7 +513,7 @@ class NastranSolver:
         model.add_pshell(
             pid=1,
             mid1=1,  # Material ID
-            t=panel.thickness,
+            t=float(panel.thickness),
             mid2=None,
             twelveIt3=1.0,
             mid3=None,
@@ -529,9 +630,11 @@ class NastranSolver:
         
         return boundary_nodes
     
-    def _setup_flutter_analysis(self, model: BDF, flow: 'FlowConditions',
-                               velocity_range: Tuple[float, float], num_points: int):
-        """Setup flutter analysis parameters"""
+    def _setup_flutter_analysis_simple(self, model: BDF, panel: 'PanelProperties', flow: 'FlowConditions',
+                                      velocity_range: Tuple[float, float], num_points: int):
+        """Setup simplified flutter analysis without problematic PAERO5"""
+        
+        self.logger.info("Setting up simplified flutter analysis (avoiding PAERO5 issues)")
         
         # Density ratios
         density_fact_id = 1
@@ -546,21 +649,98 @@ class NastranSolver:
         velocity_fact_id = 3
         model.add_flfact(sid=velocity_fact_id, factors=velocities)
         
+        # Add MKAERO1 entries (Mach-frequency combinations)
+        mach_values = self.config.mach_numbers[:5]  # Use first 5 Mach numbers
+        reduced_freqs = [0.001, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0]  # Standard reduced frequencies
+        
+        # Add MKAERO1 cards
+        for i in range(0, len(mach_values), 8):  # 8 Mach numbers per card max
+            mach_row = mach_values[i:i+8]
+            while len(mach_row) < 8:
+                mach_row.append(0.0)  # Pad with zeros
+            model.add_mkaero1(mach_row, reduced_freqs)
+        
+        self.logger.info(f"Added MKAERO1 with {len(mach_values)} Mach numbers and {len(reduced_freqs)} frequencies")
+        
+        # Use CAERO1 instead of CAERO5 to avoid PAERO5 complexity
+        # CAERO1 is more commonly supported and doesn't require PAERO5
+        panel_length = max(panel.length, 0.1)
+        panel_width = max(panel.width, 0.1)
+        
+        try:
+            # CAERO1 panel for doublet lattice method
+            model.add_caero1(
+                eid=5000,  # Element ID
+                pid=5001,  # Property ID (will be created automatically)
+                igroup=1,  # Interference group (MUST be > 0 for NASTRAN)
+                cp=0,      # Coordinate system
+                nspan=8,   # Number of spanwise boxes
+                nchord=4,  # Number of chordwise boxes  
+                p1=[0.0, 0.0, 0.0],          # Corner 1: origin
+                x12=panel_length,             # Chord length
+                p4=[0.0, panel_width, 0.0],  # Corner 4: span direction
+                x43=panel_length              # Chord length at tip
+            )
+            self.logger.info("Added CAERO1 panel (doublet lattice method)")
+            
+        except Exception as e:
+            self.logger.warning(f"CAERO1 failed: {e}, trying manual creation")
+            # Manual CAERO1 card creation with correct format
+            # CAERO1: EID, PID, CP, NSPAN, NCHORD, LSPAN, LCHORD, IGID
+            #         X1, Y1, Z1, X12, X4, Y4, Z4, X43
+            caero1_card = [
+                'CAERO1', 5000, 5001, 0, 8, 4, 0, 1,  # IGID changed from 0 to 1
+                0.0, 0.0, 0.0, panel_length, 0.0, panel_width, 0.0, panel_length
+            ]
+            model.add_card(caero1_card, 'CAERO1', is_list=True)
+            self.logger.info("Created CAERO1 card manually")
+        
+        # Add PAERO1 property (much simpler than PAERO5)
+        try:
+            model.add_paero1(pid=5001)  # Simple PAERO1 with default values
+            self.logger.info("Added PAERO1 property")
+        except Exception as e:
+            self.logger.warning(f"Could not add PAERO1: {e}")
+        
+        # Add SPLINE1 to connect structural and aerodynamic mesh
+        try:
+            # Add SET1 for structural grid points
+            struct_grids = list(range(1, 64))  # All structural grid points (1-63)
+            model.add_set1(sid=1000, ids=struct_grids)
+            
+            # SPLINE1 for CAERO1
+            # BOX1 and BOX2 must be relative to CAERO element ID
+            # CAERO1 with 8x4=32 boxes starts at EID 5000, boxes are 5000-5031
+            spline1_card = [
+                'SPLINE1', 6000, 5000, 5000, 5031, 1000, 0.0  # BOX1=5000, BOX2=5031
+            ]
+            model.add_card(spline1_card, 'SPLINE1', is_list=True)
+            
+            self.logger.info("Added SPLINE1 and SET1 successfully with correct box numbering")
+            
+        except Exception as e:
+            self.logger.warning(f"Could not add SPLINE1: {e}")
+        
         # Flutter method
         model.add_flutter(
-            sid=200,
-            method=self.config.method,
-            density=density_fact_id,
-            mach=mach_fact_id,
-            reduced_freq_velocity=velocity_fact_id
+            sid=200,                    # Flutter ID
+            method=self.config.method,  # PK method
+            density=density_fact_id,    # FLFACT ID for densities
+            mach=mach_fact_id,         # FLFACT ID for Mach numbers  
+            reduced_freq_velocity=velocity_fact_id,  # FLFACT ID for velocities
+            imethod='L',               # Flutter tracking method
+            nvalue=20,                 # Number of roots
+            omax=10.0                  # Maximum frequency
         )
         
         # Aerodynamic reference
         model.add_aero(
             velocity=1.0,
-            cref=0.3,     # Reference chord (300mm = 0.3m)
-            rho_ref=1.225  # Reference density (sea level)
+            cref=panel_length,    # Use panel length as reference chord
+            rho_ref=1.225         # Sea level density
         )
+        
+        self.logger.info("Added simplified aerodynamic setup: MKAERO1, CAERO1, PAERO1, SPLINE1, SET1")
     
     def _execute_nastran(self, bdf_path: Path) -> Path:
         """Execute NASTRAN solver"""
