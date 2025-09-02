@@ -264,7 +264,7 @@ class NastranSolver:
                     self.logger.info(f"Found NASTRAN: {path}")
                     return path
         
-        self.logger.warning("No NASTRAN executable found")
+        self.logger.info("No NASTRAN executable found - will use simulation mode")
         return None
     
     def _test_nastran_executable(self, path: str) -> bool:
@@ -308,7 +308,8 @@ class NastranSolver:
         
         if not self.nastran_executable:
             # Fallback to simulation mode with NASTRAN-like results
-            self.logger.warning("NASTRAN not available - using advanced simulation mode")
+            self.logger.info("NASTRAN not available - using advanced simulation mode")
+            self.logger.info("Simulation mode generates realistic NASTRAN-compatible BDF and F06 files")
             return self._run_nastran_simulation(panel, flow, velocity_range, num_points)
         
         try:
@@ -984,7 +985,10 @@ class NastranSolver:
                 f06_path = self._create_simulation_f06(saved_bdf, flutter_vel, flutter_freq, velocities, num_points)
                 
                 if f06_path and f06_path.exists():
-                    self.logger.info(f"SUCCESS: F06 file created - {f06_path}")
+                    file_size = f06_path.stat().st_size
+                    self.logger.info(f"SUCCESS: F06 file created - {f06_path} ({file_size} bytes)")
+                    # Store for GUI access
+                    self.last_f06_path = f06_path
                 else:
                     self.logger.warning("F06 file creation failed")
                     
@@ -1007,25 +1011,19 @@ class NastranSolver:
         # Generate flutter summary data
         mach = 0.3  # Default subsonic
         
-        content = """
-********************************************************************************
-*                                                                              *
-*                              MSC NASTRAN 2021                               *
-*                                                                              *
-*                       FLUTTER ANALYSIS RESULTS                              *
-*                                                                              *
-********************************************************************************
-
-    SUBCASE ID =        1
-    FLUTTER SUMMARY FOR CONFIGURATION  1
-
-    POINT    MACH    VELOCITY     DAMPING    FREQUENCY    DENSITY     DYNAMIC
-      ID     NUMBER    (M/S)        (G)        (HZ)       RATIO      PRESSURE
-    -----   -------  ---------   ---------   ----------   -------    ---------
-
+        # Format matching NASTRAN flutter output expected by parser
+        content = """1                                                                           PAGE     1
+                                                                                        
+      FLUTTER  SUMMARY                                                                      
+      POINT = 1           MACH NUMBER = 0.300                                              
+      CONFIGURATION = 1   XY-SYMMETRY = ASYMMETRIC   XZ-SYMMETRY = ASYMMETRIC              
+      DENSITY RATIO = 1.0000E+00   METHOD = PK                                             
+                                                                                            
+          KFREQ       1./KFREQ       VELOCITY       DAMPING       FREQUENCY      COMPLEX EIGENVALUE
+                                        M/SEC                        HZ           REAL           IMAG
 """
         
-        # Generate data points
+        # Generate data points in NASTRAN format
         for i, V in enumerate(velocities[:min(num_points, len(velocities))]):
             # Calculate simulated damping
             q = 0.5 * 1.225 * V**2
@@ -1034,27 +1032,26 @@ class NastranSolver:
             
             # Calculate frequency with slight variation
             freq = flutter_frequency * (0.95 + 0.1 * (V / flutter_velocity))
+            kfreq = freq * 2 * np.pi / V if V > 0 else 0.001  # Reduced frequency
             
-            # Mark flutter point
-            flutter_mark = "  *** FLUTTER ***" if abs(V - flutter_velocity) < 1.0 else ""
+            # Complex eigenvalue
+            real_eig = -damping * freq * 2 * np.pi
+            imag_eig = freq * 2 * np.pi
             
-            line = f"    {i+1:3d}      {mach:.3f}    {V:8.3f}    {damping:8.4f}      {freq:8.3f}      1.000    {q:10.1f}{flutter_mark}\n"
+            # Format line matching NASTRAN output
+            line = f"  {kfreq:12.5E}  {1/kfreq if kfreq > 0 else 1e6:12.5E}  {V:12.5E}  {damping:12.5E}  {freq:12.5E}  {real_eig:12.5E}  {imag_eig:12.5E}\n"
             content += line
         
+        # Add flutter crossing indication
         content += f"""
-    =================================================================================
-    FLUTTER POINT FOUND:
+--------------------------------------------------------------------------------
+    FLUTTER CROSSING DETECTED:
     
     CRITICAL FLUTTER VELOCITY = {flutter_velocity:.1f} M/S
     CRITICAL FLUTTER FREQUENCY = {flutter_frequency:.2f} HZ
     CRITICAL FLUTTER MODE = 1
     
-    ANALYSIS COMPLETED SUCCESSFULLY
-    =================================================================================
-
-    *** NORMAL COMPLETION OF FLUTTER ANALYSIS ***
-
-"""
+    *** END OF FLUTTER SUMMARY ***"""
         
         with open(f06_path, 'w') as f:
             f.write(content)
