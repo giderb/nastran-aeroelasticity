@@ -104,7 +104,7 @@ class ProjectFileManager:
                 project_data = json.load(f)
                 
             # Create new project model and load data
-            from gui.models.project_model import ProjectModel
+            from src.gui.models.project_model import ProjectModel
             project_model = ProjectModel()
             project_model.from_dict(project_data)
             
@@ -133,8 +133,8 @@ class ProjectFileManager:
             file_path: Path where to save the BDF file
         """
         try:
-            from nastran.aero.analysis.panel_flutter import PanelFlutterPistonAnalysisModel
-            from nastran.aero.superpanels import SuperAeroPanel5
+            from src.nastran.aero.analysis.panel_flutter import PanelFlutterPistonAnalysisModel
+            from src.nastran.aero.superpanels import SuperAeroPanel5
             
             # Create analysis model
             analysis_model = PanelFlutterPistonAnalysisModel()

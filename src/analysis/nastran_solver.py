@@ -540,12 +540,21 @@ class NastranSolver:
         
         # Handle boundary conditions if available
         if self.boundary_conditions_available and self.bc_manager:
+            # Parse boundary condition string if needed
+            if isinstance(panel.boundary_conditions, str):
+                bc_enum = self.bc_manager.parse_boundary_condition(panel.boundary_conditions)
+                if not bc_enum:
+                    self.logger.warning(f"Unknown boundary condition {panel.boundary_conditions}, using SSSS")
+                    bc_enum = self.BoundaryCondition.SSSS
+            else:
+                bc_enum = panel.boundary_conditions
+            
             # Get boundary condition properties
-            bc_props = self.bc_manager.get_boundary_condition(panel.boundary_conditions)
-            edge_constraints = self.bc_manager.get_edge_constraints(panel.boundary_conditions)
+            bc_props = self.bc_manager.get_boundary_condition(bc_enum)
+            edge_constraints = self.bc_manager.get_edge_constraints(bc_enum)
             
             if not bc_props:
-                self.logger.warning(f"Unknown boundary condition {panel.boundary_conditions}, using SSSS")
+                self.logger.warning(f"Could not get properties for {bc_enum}, using SSSS")
                 edge_constraints = {
                     "leading": self.EdgeConstraint.SIMPLY_SUPPORTED,
                     "trailing": self.EdgeConstraint.SIMPLY_SUPPORTED,

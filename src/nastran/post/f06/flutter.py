@@ -4,7 +4,7 @@ from copy import copy
 
 from pandas.core.frame import DataFrame
 
-from nastran.post.f06.common import extract_tabulated_data, parse_text_value, find_tabular_line_range, parse_label_subcase, F06Page
+from src.nastran.post.f06.common import extract_tabulated_data, parse_text_value, find_tabular_line_range, parse_label_subcase, F06Page
 
 import numpy as np
 import pandas as pd

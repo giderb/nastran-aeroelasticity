@@ -1,7 +1,7 @@
 
 from abc import abstractmethod
 
-from nastran.geometry.panels import RectangularPlate
+from src.nastran.geometry.panels import RectangularPlate
 
 class AeroPanel(RectangularPlate):
     """

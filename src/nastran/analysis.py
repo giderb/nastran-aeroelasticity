@@ -5,7 +5,7 @@ from numpy.lib.utils import deprecate
 # import yaml
 from pyNastran.bdf.bdf import BDF, CaseControlDeck
 
-from nastran.utils import IdUtility, set_object_properties
+from src.nastran.utils import IdUtility, set_object_properties
 
 class ExecutiveControl:
     pass

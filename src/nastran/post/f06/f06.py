@@ -2,8 +2,8 @@ import pandas as pd
 
 import datetime
 
-from nastran.post.f06.flutter import parse_flutter_page, FlutterF06Page
-from nastran.post.f06.eigval import parse_realeigval_page, RealEigValF06Page, summarize_real_eigvals, ModalEffectiveMassFractionF06Page
+from src.nastran.post.f06.flutter import parse_flutter_page, FlutterF06Page
+from src.nastran.post.f06.eigval import parse_realeigval_page, RealEigValF06Page, summarize_real_eigvals, ModalEffectiveMassFractionF06Page
 
 PAGE_PARSING_FUNCTIONS = {
     'flutter': parse_flutter_page,

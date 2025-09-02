@@ -2,8 +2,8 @@
 from typing import Any, Dict
 
 from numpy.lib.utils import deprecate
-from nastran.geometry.panels import RectangularPlate
-from nastran.aero.panels import AeroPanel, AeroPanel1, AeroPanel5
+from src.nastran.geometry.panels import RectangularPlate
+from src.nastran.aero.panels import AeroPanel, AeroPanel1, AeroPanel5
 
 import numpy as np
 

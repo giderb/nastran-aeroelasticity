@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-from nastran.post.f06.common import extract_tabulated_data, parse_text_value, find_tabular_line_range, parse_label_subcase, F06Page
+from src.nastran.post.f06.common import extract_tabulated_data, parse_text_value, find_tabular_line_range, parse_label_subcase, F06Page
 
 REALIGVAL_SUBCASE_LINE = 2
 REALIGVAL_TABULAR_LINE = 7

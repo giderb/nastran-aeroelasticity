@@ -1,5 +1,5 @@
 
-from nastran.analysis import AnalysisModel
+from src.nastran.analysis import AnalysisModel
 
 
 class BCType:

@@ -2,10 +2,10 @@
 from typing import List
 from pyNastran.bdf.bdf import BDF
 
-from nastran.geometry.panels import RectangularPlate
-from nastran.structures.composite import Ply, OrthotropicMaterial, Sheet
+from src.nastran.geometry.panels import RectangularPlate
+from src.nastran.structures.composite import Ply, OrthotropicMaterial, Sheet
 from pyNastran.bdf.cards.properties.shell import PSHELL
-from nastran.utils import IdUtility
+from src.nastran.utils import IdUtility
 
 import numpy as np
 

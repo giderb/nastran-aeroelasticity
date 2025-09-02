@@ -1,9 +1,9 @@
 
 from typing import Dict
 from pyNastran.bdf.bdf import BDF, CaseControlDeck
-from nastran.aero.superpanels import SuperAeroPanel5
+from src.nastran.aero.superpanels import SuperAeroPanel5
 
-from nastran.analysis import AnalysisModel, Subcase
+from src.nastran.analysis import AnalysisModel, Subcase
 
 import numpy as np
 

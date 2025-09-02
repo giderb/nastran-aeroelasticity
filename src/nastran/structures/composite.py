@@ -4,7 +4,7 @@ import re
 from pyNastran.bdf.cards.properties.shell import PCOMP
 from pyNastran.bdf.cards.materials import MAT8, MAT5, MAT2
 
-from nastran.structures.material import OrthotropicMaterial
+from src.nastran.structures.material import OrthotropicMaterial
 
 class Sheet:
 

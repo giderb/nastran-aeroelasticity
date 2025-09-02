@@ -15,13 +15,13 @@ from tkinter import ttk, messagebox
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
-from gui.views.geometry_panel import GeometryPanel
-from gui.views.material_panel import MaterialPanel
-from gui.views.boundary_panel import BoundaryPanel
-from gui.views.analysis_panel import AnalysisPanel
-from gui.views.results_panel import ResultsPanel
-from gui.views.visualization_panel import VisualizationPanel
-from gui.utils.widgets import ModernMenuBar, ModernStatusBar, ModernToolBar
+from src.gui.views.geometry_panel import GeometryPanel
+from src.gui.views.material_panel import MaterialPanel
+from src.gui.views.boundary_panel import BoundaryPanel
+from src.gui.views.analysis_panel import AnalysisPanel
+from src.gui.views.results_panel import ResultsPanel
+from src.gui.views.visualization_panel import VisualizationPanel
+from src.gui.utils.widgets import ModernMenuBar, ModernStatusBar, ModernToolBar
 
 
 class MainWindow:

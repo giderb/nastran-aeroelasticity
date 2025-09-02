@@ -245,13 +245,23 @@ class BoundaryConditionManager:
         """Get all supported boundary conditions"""
         return self.boundary_conditions
     
-    def parse_boundary_condition(self, bc_string: str) -> Optional[BoundaryCondition]:
-        """Parse boundary condition from string (e.g., 'SSSS', 'CFFF')"""
-        try:
-            return BoundaryCondition(bc_string.upper())
-        except ValueError:
-            self.logger.warning(f"Unknown boundary condition: {bc_string}")
-            return None
+    def parse_boundary_condition(self, bc_input) -> Optional[BoundaryCondition]:
+        """Parse boundary condition from string (e.g., 'SSSS', 'CFFF') or return if already enum"""
+        # If already a BoundaryCondition enum, return it
+        if isinstance(bc_input, BoundaryCondition):
+            return bc_input
+        
+        # If string, try to parse it
+        if isinstance(bc_input, str):
+            try:
+                return BoundaryCondition(bc_input.upper())
+            except ValueError:
+                self.logger.warning(f"Unknown boundary condition: {bc_input}")
+                return None
+        
+        # Unknown type
+        self.logger.warning(f"Invalid boundary condition type: {type(bc_input)}")
+        return None
     
     def get_edge_constraints(self, bc_type: BoundaryCondition) -> Dict[str, EdgeConstraint]:
         """Get individual edge constraints for a boundary condition"""

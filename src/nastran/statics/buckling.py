@@ -1,4 +1,4 @@
-from nastran.analysis import AnalysisModel, Subcase
+from src.nastran.analysis import AnalysisModel, Subcase
 
 
 class LinearBucklingSubcase(Subcase):

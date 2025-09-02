@@ -17,11 +17,11 @@ from pathlib import Path
 import threading
 import logging
 
-from gui.controllers.main_controller import MainController
-from gui.views.main_window import MainWindow
-from gui.models.project_model import ProjectModel
-from gui.utils.logger import setup_logger
-from gui.utils.themes import ModernTheme
+from src.gui.controllers.main_controller import MainController
+from src.gui.views.main_window import MainWindow
+from src.gui.models.project_model import ProjectModel
+from src.gui.utils.logger import setup_logger
+from src.gui.utils.themes import ModernTheme
 
 
 class PanelFlutterApp:
