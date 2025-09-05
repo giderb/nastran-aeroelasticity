@@ -13,7 +13,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 import numpy as np
 
-from src.gui.utils.widgets import ParameterTable
+from ...gui.utils.widgets import ParameterTable
 
 
 class ResultsPanel:

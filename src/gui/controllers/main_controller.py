@@ -15,8 +15,8 @@ from pathlib import Path
 
 from src.nastran.aero.analysis.panel_flutter import PanelFlutterPistonAnalysisModel
 from src.nastran.aero.superpanels import SuperAeroPanel5
-from src.gui.utils.validation import InputValidator
-from src.gui.utils.file_manager import ProjectFileManager
+from ...gui.utils.validation import InputValidator
+from ...gui.utils.file_manager import ProjectFileManager
 
 
 class MainController:
@@ -196,11 +196,11 @@ class MainController:
             self.logger.info(f"Analysis method selected: {solver_method}")
             
             # Import the flutter analysis system
-            from src.gui.analysis.flutter_engine import (
+            from ...gui.analysis.flutter_engine import (
                 FlutterAnalysisEngine, FlutterAnalysisConfig, 
                 GeometryConfig, MaterialConfig
             )
-            from src.gui.analysis.analysis_runner import AnalysisRunner
+            from ...gui.analysis.analysis_runner import AnalysisRunner
             
             # Create configuration objects
             config = FlutterAnalysisConfig(

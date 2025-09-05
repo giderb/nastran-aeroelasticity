@@ -10,8 +10,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import numpy as np
 
-from src.gui.utils.widgets import LabeledEntry, LabeledSpinbox, ParameterTable
-from src.gui.utils.validation import is_valid_float, is_positive_float
+from ...gui.utils.widgets import LabeledEntry, LabeledSpinbox, ParameterTable
+from ...gui.utils.validation import is_valid_float, is_positive_float
 
 
 class AnalysisPanel:

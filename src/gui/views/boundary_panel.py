@@ -15,7 +15,7 @@ from pathlib import Path
 src_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(src_dir))
 
-from src.gui.utils.widgets import LabeledEntry, LabeledSpinbox, ParameterTable
+from ...gui.utils.widgets import LabeledEntry, LabeledSpinbox, ParameterTable
 from src.analysis.boundary_conditions import BoundaryCondition, BoundaryConditionManager, EdgeConstraint
 
 
