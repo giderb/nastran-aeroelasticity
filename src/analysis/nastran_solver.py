@@ -171,6 +171,10 @@ class NastranSolver:
         self.logger.info("SIMULATION MODE ENABLED - Will generate NASTRAN-compatible files")
         self.simulation_mode = True
     
+    def is_available(self) -> bool:
+        """Check if NASTRAN solver is available"""
+        return self.nastran_executable is not None and not self.simulation_mode
+    
     def _validate_nastran_executable(self, path: str) -> bool:
         """Validate that NASTRAN executable exists and is runnable"""
         
