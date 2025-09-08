@@ -484,14 +484,37 @@ MSC.NASTRAN JOB CREATED ON {time.strftime('%d-%b-%y AT %H:%M:%S')}
                     pass
     
     def _generate_simple_bdf(self, bdf_path: Path, panel) -> Path:
-        """Generate a simple BDF file for testing"""
+        """Generate a complete BDF file for flutter analysis using improved generator"""
         
-        if not PYNASTRAN_AVAILABLE:
-            # Generate text-based BDF
+        # Import the improved BDF generator
+        try:
+            from .nastran_bdf_generator import NastranBDFGenerator
+            
+            # Use the new generator for proper aerodynamic setup
+            generator = NastranBDFGenerator()
+            
+            # Get flow conditions if available
+            flow = getattr(panel, 'flow_conditions', None)
+            
+            # Generate BDF with complete aerodynamic cards
+            bdf_content = generator.generate_flutter_bdf(
+                panel=panel,
+                flow=flow,
+                velocity_range=(50, 500),
+                num_velocities=20,
+                output_file=bdf_path
+            )
+            
+            self.logger.info(f"Generated comprehensive BDF file with AERO cards at {bdf_path}")
+            
+        except ImportError:
+            self.logger.warning("Advanced BDF generator not available, using fallback")
+            # Fall back to improved text-based generation
             self._generate_text_bdf(bdf_path, panel)
-        else:
-            # Use pyNastran
-            self._generate_pynastran_bdf(bdf_path, panel)
+        except Exception as e:
+            self.logger.error(f"Error using advanced BDF generator: {e}")
+            # Fall back to text-based generation
+            self._generate_text_bdf(bdf_path, panel)
         
         return bdf_path
     
@@ -535,8 +558,9 @@ MSC.NASTRAN JOB CREATED ON {time.strftime('%d-%b-%y AT %H:%M:%S')}
             f.write("FLFACT,2,0.3,0.5,0.7,0.9,1.1\n")  # Mach numbers
             f.write("FLFACT,3,50.,100.,150.,200.,250.,300.,350.,400.\n")  # Velocities
             
-            # Aerodynamic reference
-            f.write(f"AERO,0,1.0,{panel.length:.3f},1.225\n")
+            # Aerodynamic reference - CRITICAL for flutter analysis
+            # AERO card format: AERO,ACSID,VELOCITY,REFC,RHOREF,SYMXZ,SYMXY
+            f.write(f"AERO,0,1.0,{panel.length:.3f},1.225,,\n")
             
             # Simple CAERO1 panel
             f.write("CAERO1,5000,5001,0,8,4,,,\n")

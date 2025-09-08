@@ -2056,7 +2056,7 @@ to give you confidence levels and validation.
                 return
 
             # Fallback to traditional NASTRAN analysis
-            from src.gui.analysis import (
+            from gui.analysis import (
                 AnalysisRunner, FlutterAnalysisConfig,
                 GeometryConfig, MaterialConfig, ResultsAnalyzer
             )
@@ -2074,7 +2074,7 @@ to give you confidence levels and validation.
         try:
             # Create analysis configuration from GUI inputs
             # Map to actual existing GUI variables
-            from src.gui.analysis import (
+            from gui.analysis import (
                 AnalysisRunner, FlutterAnalysisConfig,
                 GeometryConfig, MaterialConfig, ResultsAnalyzer
             )
@@ -2335,10 +2335,10 @@ to give you confidence levels and validation.
         """Run multi-solver flutter analysis with timeout protection"""
         try:
             # Import multi-solver framework
-            from src.analysis.multi_solver_framework import (
+            from analysis.multi_solver_framework import (
                 MultiSolverAnalyzer, SolverMethod, SolverSelector
             )
-            from src.analysis.piston_theory_solver import PanelProperties, FlowConditions
+            from analysis.piston_theory_solver import PanelProperties, FlowConditions
             import time
 
             # Update status
@@ -2350,7 +2350,7 @@ to give you confidence levels and validation.
 
             # Get panel properties from GUI with boundary conditions
             try:
-                from src.analysis.boundary_conditions import BoundaryCondition
+                from analysis.boundary_conditions import BoundaryCondition
                 bc_code = self.get_boundary_condition_code()
                 bc_enum = BoundaryCondition(bc_code)
                 boundary_conditions = bc_enum
@@ -2509,7 +2509,7 @@ to give you confidence levels and validation.
     def detect_nastran_executable(self):
         """Auto-detect NASTRAN executable"""
         try:
-            from src.analysis.nastran_solver import NastranSolver, NastranConfig
+            from analysis.nastran_solver import NastranSolver, NastranConfig
 
             # Create solver with default config to test detection
             config = NastranConfig()
@@ -2533,7 +2533,7 @@ to give you confidence levels and validation.
     def check_nastran_executable(self, path: str):
         """Check if specified NASTRAN executable is valid"""
         try:
-            from src.analysis.nastran_solver import NastranSolver
+            from analysis.nastran_solver import NastranSolver
 
             # Create a test solver with the specified path
             solver = NastranSolver()
@@ -2551,7 +2551,7 @@ to give you confidence levels and validation.
     def get_nastran_config(self):
         """Get NASTRAN configuration from GUI settings"""
         try:
-            from src.analysis.nastran_solver import NastranConfig
+            from analysis.nastran_solver import NastranConfig
 
             # Custom paths if specified
             nastran_paths = []
@@ -2581,7 +2581,7 @@ to give you confidence levels and validation.
         except Exception as e:
             self.logger.error(f"Error creating NASTRAN config: {e}")
             # Return default config as fallback
-            from src.analysis.nastran_solver import NastranConfig
+            from analysis.nastran_solver import NastranConfig
             return NastranConfig()
 
     def _extract_plot_data(self, results):
