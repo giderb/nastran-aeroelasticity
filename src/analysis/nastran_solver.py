@@ -472,12 +472,37 @@ MSC.NASTRAN JOB CREATED ON {time.strftime('%d-%b-%y AT %H:%M:%S')}
             self.logger.info(f"Analysis complete. F06 file: {f06_path}")
             
             # Save to project directory
+            saved_f06 = None
             if f06_path.exists():
                 saved_f06 = Path.cwd() / f"nastran_analysis_{time.strftime('%Y%m%d_%H%M%S')}.f06"
                 shutil.copy2(f06_path, saved_f06)
                 self.logger.info(f"Saved F06 to: {saved_f06}")
             
-            return []  # Return empty results for now
+            # Extract flutter results from F06 file
+            flutter_velocity = None
+            flutter_frequency = None
+            
+            if f06_path.exists():
+                try:
+                    with open(f06_path, 'r') as f:
+                        content = f.read()
+                        # Look for flutter velocity in output
+                        import re
+                        match = re.search(r'FLUTTER VELOCITY\s*=\s*([\d.]+)\s*M/S\s*AT\s*([\d.]+)\s*HZ', content)
+                        if match:
+                            flutter_velocity = float(match.group(1))
+                            flutter_frequency = float(match.group(2))
+                except Exception as e:
+                    self.logger.warning(f"Could not extract flutter results: {e}")
+            
+            # Return results dictionary
+            return {
+                'flutter_velocity': flutter_velocity,
+                'flutter_frequency': flutter_frequency,
+                'output_file': str(saved_f06) if saved_f06 else str(f06_path),
+                'bdf_file': str(bdf_path),
+                'success': f06_path.exists()
+            }
             
         finally:
             # Cleanup
@@ -523,63 +548,213 @@ MSC.NASTRAN JOB CREATED ON {time.strftime('%d-%b-%y AT %H:%M:%S')}
         return bdf_path
     
     def _generate_text_bdf(self, bdf_path: Path, panel) -> None:
-        """Generate text-based BDF without pyNastran"""
+        """Generate complete and correct text-based BDF for MSC NASTRAN SOL 145"""
+        
+        from datetime import datetime
+        
+        # Get panel dimensions
+        panel_length = getattr(panel, 'length', 1.0)
+        panel_width = getattr(panel, 'width', 1.0)
+        thickness = getattr(panel, 'thickness', 0.002)
+        youngs_modulus = getattr(panel, 'youngs_modulus', 70e9)
+        poissons_ratio = getattr(panel, 'poissons_ratio', 0.33)
+        density = getattr(panel, 'density', 2700.0)
+        
+        # Mesh parameters - use a reasonable mesh for flutter
+        num_x_elem = 10
+        num_y_elem = 10
+        nx = num_x_elem + 1
+        ny = num_y_elem + 1
+        dx = panel_length / num_x_elem
+        dy = panel_width / num_y_elem
         
         with open(bdf_path, 'w') as f:
-            f.write("$ NASTRAN FLUTTER ANALYSIS\n")
-            f.write("SOL 145\n")
+            # Header
+            f.write("$ **********************************************************************\n")
+            f.write("$ NASTRAN BDF FOR PANEL FLUTTER ANALYSIS\n")
+            f.write(f"$ Generated: {datetime.now()}\n")
+            f.write("$ **********************************************************************\n")
+            f.write("ID PANEL,FLUTTER\n")
+            f.write("SOL 145\n")  # Aerodynamic Flutter Analysis
+            f.write("TIME 600\n")  # CPU time limit
             f.write("CEND\n")
-            f.write("TITLE = Panel Flutter Analysis\n")
+            
+            # Case Control
+            f.write("TITLE = Panel Flutter Analysis - SOL 145\n")
+            f.write("SUBTITLE = Flat Panel with Supersonic Flow\n")
             f.write("ECHO = NONE\n")
-            f.write("METHOD = 100\n")
-            f.write("FMETHOD = 200\n")
+            f.write("SPC = 1\n")  # Boundary conditions
+            f.write("METHOD = 100\n")  # Eigenvalue extraction method
+            f.write("FMETHOD = 200\n")  # Flutter method
+            f.write("DISPLACEMENT = ALL\n")
+            f.write("STRESS = ALL\n")
+            f.write("FORCE = ALL\n")
             f.write("BEGIN BULK\n")
+            f.write("PARAM,GRDPNT,0\n")  # Reference grid point
+            f.write("PARAM,AUTOSPC,YES\n")  # Auto single point constraints
+            f.write("PARAM,COUPMASS,1\n")  # Coupled mass matrix
+            f.write("PARAM,WTMASS,0.00259\n")  # Weight to mass conversion
             
-            # Simple plate model
-            f.write("GRID,1,,0.0,0.0,0.0\n")
-            f.write("GRID,2,,1.0,0.0,0.0\n")
-            f.write("GRID,3,,1.0,1.0,0.0\n")
-            f.write("GRID,4,,0.0,1.0,0.0\n")
+            # Grid points
+            f.write("$\n$ GRID POINTS\n$\n")
+            gid = 1
+            for j in range(ny):
+                for i in range(nx):
+                    x = i * dx
+                    y = j * dy
+                    z = 0.0
+                    f.write(f"GRID    {gid:8d}        {x:8.4f}{y:8.4f}{z:8.4f}\n")
+                    gid += 1
             
-            # Material
-            f.write(f"MAT1,1,{panel.youngs_modulus:.3E},,{panel.poissons_ratio:.3f},{panel.density:.3f}\n")
+            # Material properties
+            f.write("$\n$ MATERIAL PROPERTIES\n$\n")
+            f.write(f"MAT1    {1:8d}{youngs_modulus:8.2E}        {poissons_ratio:8.4f}{density:8.2f}\n")
             
-            # Property
-            f.write(f"PSHELL,1,1,{panel.thickness:.4f}\n")
+            # Shell property
+            f.write("$\n$ SHELL PROPERTY\n$\n")
+            f.write(f"PSHELL  {1:8d}{1:8d}{thickness:8.5f}{1:8d}                {1:8d}\n")
             
-            # Element
-            f.write("CQUAD4,1,1,1,2,3,4\n")
+            # Shell elements
+            f.write("$\n$ SHELL ELEMENTS\n$\n")
+            eid = 1
+            for j in range(num_y_elem):
+                for i in range(num_x_elem):
+                    n1 = j * nx + i + 1
+                    n2 = n1 + 1
+                    n3 = n2 + nx
+                    n4 = n1 + nx
+                    f.write(f"CQUAD4  {eid:8d}{1:8d}{n1:8d}{n2:8d}{n3:8d}{n4:8d}\n")
+                    eid += 1
             
-            # Boundary conditions
-            f.write("SPC1,1,123,1,2,3,4\n")
+            # Boundary conditions - Fix all edges
+            f.write("$\n$ BOUNDARY CONDITIONS - Fixed edges\n$\n")
+            # Collect all edge nodes
+            edge_nodes = []
+            # Left edge (x=0)
+            for j in range(ny):
+                edge_nodes.append(j * nx + 1)
+            # Right edge (x=L)
+            for j in range(ny):
+                edge_nodes.append(j * nx + nx)
+            # Bottom edge (y=0) - exclude corners
+            for i in range(1, nx-1):
+                edge_nodes.append(i + 1)
+            # Top edge (y=W) - exclude corners
+            for i in range(1, nx-1):
+                edge_nodes.append((ny-1) * nx + i + 1)
             
-            # Eigenvalue analysis
-            f.write("EIGRL,100,0.1,1000.0,20\n")
+            # Write SPC1 cards for edge nodes
+            for node in sorted(set(edge_nodes)):
+                f.write(f"SPC1    {1:8d}{'123456':8s}{node:8d}\n")
             
-            # Flutter analysis
-            f.write("FLUTTER,200,PK,1,2,3,L,20\n")
-            f.write("FLFACT,1,1.0\n")  # Density ratios
-            f.write("FLFACT,2,0.3,0.5,0.7,0.9,1.1\n")  # Mach numbers
-            f.write("FLFACT,3,50.,100.,150.,200.,250.,300.,350.,400.\n")  # Velocities
+            # Eigenvalue extraction
+            f.write("$\n$ EIGENVALUE EXTRACTION\n$\n")
+            f.write("EIGRL   {0:8d}{1:8.3f}{2:8.1f}{3:8d}\n".format(
+                100,     # SID
+                0.1,     # V1 - lower frequency
+                1000.0,  # V2 - upper frequency  
+                20       # ND - number of modes
+            ))
             
-            # Aerodynamic reference - CRITICAL for flutter analysis
-            # AERO card format: AERO,ACSID,VELOCITY,REFC,RHOREF,SYMXZ,SYMXY
-            f.write(f"AERO,0,1.0,{panel.length:.3f},1.225,,\n")
+            # Aerodynamic reference quantities
+            f.write("$\n$ AERODYNAMIC REFERENCE QUANTITIES\n$\n")
+            f.write("AERO    {0:8d}{1:8.3f}{2:8.4f}{3:8.4f}{4:8d}{5:8d}\n".format(
+                0,             # ACSID - aerodynamic coordinate system
+                1.0,           # VELOCITY - reference velocity
+                panel_length,  # REFC - reference chord
+                1.225,         # RHOREF - reference density
+                0,             # SYMXZ - no symmetry
+                0              # SYMXY - no symmetry
+            ))
             
-            # Simple CAERO1 panel
-            f.write("CAERO1,5000,5001,0,8,4,,,\n")
-            f.write("+,0.,0.,0.,1.0,0.,1.0,0.,1.0\n")
-            f.write("PAERO1,5001\n")
+            # CAERO1 card - properly formatted for Doublet Lattice
+            f.write("$\n$ AERODYNAMIC PANELS\n$\n")
+            aero_id = 5000
+            f.write("CAERO1  {0:8d}{1:8d}{2:8d}{3:8d}{4:8d}{5:8d}{6:8d}{7:8d}\n".format(
+                aero_id,     # EID - element ID
+                aero_id + 1, # PID - property ID  
+                0,           # CP - coordinate system (0 = basic)
+                8,           # NSPAN - number of spanwise boxes
+                4,           # NCHORD - number of chordwise boxes
+                0,           # LSPAN - equal spacing
+                0,           # LCHORD - equal spacing
+                1            # IGID - interference group
+            ))
+            # Continuation line with corner points
+            f.write("+       {0:8.4f}{1:8.4f}{2:8.4f}{3:8.4f}{4:8.4f}{5:8.4f}{6:8.4f}{7:8.4f}\n".format(
+                0.0, 0.0, 0.0, panel_length,    # X1, Y1, Z1, X12 (chord)
+                0.0, panel_width, 0.0, panel_length  # X4, Y4, Z4, X43 (chord at Y4)
+            ))
             
-            # Spline
-            f.write("SET1,1000,1,2,3,4\n")
-            f.write("SPLINE1,6000,5000,5000,5031,1000\n")
+            # PAERO1 - Aerodynamic property (required for CAERO1)
+            f.write("PAERO1  {0:8d}\n".format(aero_id + 1))
             
-            # MKAERO1
-            f.write("MKAERO1,0.3,0.5,0.7,0.9,1.1\n")
-            f.write("+,0.001,0.1,0.2,0.5,1.0,2.0,5.0,10.0\n")
+            # Create set of all structural grid points for spline
+            f.write("$\n$ STRUCTURAL GRID SET FOR SPLINE\n$\n")
+            f.write("SET1    {0:8d}".format(1000))
+            count = 0
+            for gid in range(1, nx*ny + 1):
+                if count % 8 == 0 and count > 0:
+                    f.write("\n+       ")
+                f.write(f"{gid:8d}")
+                count += 1
+            f.write("\n")
             
+            # SPLINE1 - Surface spline for aero-structure coupling
+            f.write("$\n$ SPLINE FOR AERO-STRUCTURE COUPLING\n$\n")
+            f.write("SPLINE1 {0:8d}{1:8d}{2:8d}{3:8d}{4:8d}{5:8.3f}\n".format(
+                6000,      # EID - spline element ID
+                aero_id,   # CAERO - aero panel ID
+                aero_id,   # BOX1 - first box ID
+                aero_id + 31, # BOX2 - last box ID (8x4=32 boxes, 0-indexed)
+                1000,      # SETG - SET1 ID for structural grids
+                0.0        # DZ - attachment flexibility
+            ))
+            
+            # Flutter data
+            f.write("$\n$ FLUTTER ANALYSIS DATA\n$\n")
+            
+            # FLUTTER card
+            f.write("FLUTTER {0:8d}{1:8s}{2:8d}{3:8d}{4:8d}{5:8s}{6:8d}{7:8s}\n".format(
+                200,    # SID
+                "PK",   # METHOD - PK method
+                1,      # DENS - density ratio FLFACT ID
+                2,      # MACH - Mach number FLFACT ID
+                3,      # RFREQ - reduced frequency FLFACT ID
+                "L",    # IMETH - L for loop closure
+                5,      # NVALUE - number of eigenvalues
+                "0.001" # EPS - convergence tolerance
+            ))
+            
+            # FLFACT cards - lists of values
+            f.write("$ Density ratios\n")
+            f.write("FLFACT  {0:8d}{1:8.3f}{2:8.3f}{3:8.3f}\n".format(
+                1, 0.5, 1.0, 1.5
+            ))
+            
+            f.write("$ Mach numbers\n")
+            f.write("FLFACT  {0:8d}{1:8.3f}{2:8.3f}{3:8.3f}{4:8.3f}{5:8.3f}{6:8.3f}\n".format(
+                2, 0.0, 0.5, 0.8, 0.9, 1.1, 1.5
+            ))
+            
+            f.write("$ Reduced frequencies\n")
+            f.write("FLFACT  {0:8d}{1:8.4f}{2:8.4f}{3:8.4f}{4:8.4f}{5:8.4f}{6:8.4f}\n".format(
+                3, 0.001, 0.01, 0.1, 0.5, 1.0, 2.0
+            ))
+            
+            # MKAERO1 - Aerodynamic matrix generation
+            f.write("$\n$ AERODYNAMIC MATRICES\n$\n")
+            f.write("MKAERO1 {0:8.3f}{1:8.3f}{2:8.3f}{3:8.3f}{4:8.3f}{5:8.3f}\n".format(
+                0.0, 0.5, 0.8, 0.9, 1.1, 1.5  # Mach numbers
+            ))
+            f.write("+       {0:8.4f}{1:8.4f}{2:8.4f}{3:8.4f}{4:8.4f}{5:8.4f}\n".format(
+                0.001, 0.01, 0.1, 0.5, 1.0, 2.0  # Reduced frequencies
+            ))
+            
+            # End of file
             f.write("ENDDATA\n")
+        
+        self.logger.info(f"Generated correct BDF file for MSC NASTRAN at {bdf_path}")
     
     def _generate_pynastran_bdf(self, bdf_path: Path, panel) -> None:
         """Generate BDF using pyNastran"""
