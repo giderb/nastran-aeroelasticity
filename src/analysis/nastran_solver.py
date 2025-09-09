@@ -608,7 +608,9 @@ MSC.NASTRAN JOB CREATED ON {time.strftime('%d-%b-%y AT %H:%M:%S')}
             
             # Material properties
             f.write("$\n$ MATERIAL PROPERTIES\n$\n")
-            f.write(f"MAT1    {1:8d}{youngs_modulus:8.2E}        {poissons_ratio:8.4f}{density:8.2f}\n")
+            # MAT1 format: fields must be exactly 8 characters
+            # Field 1: MAT1, Field 2: MID, Field 3: E, Field 4: G (blank), Field 5: NU, Field 6: RHO
+            f.write(f"MAT1    {1:8d}{youngs_modulus:8.2E}        {poissons_ratio:8.4f}{density:8.4f}\n")
             
             # Shell property
             f.write("$\n$ SHELL PROPERTY\n$\n")
@@ -714,16 +716,17 @@ MSC.NASTRAN JOB CREATED ON {time.strftime('%d-%b-%y AT %H:%M:%S')}
             # Flutter data
             f.write("$\n$ FLUTTER ANALYSIS DATA\n$\n")
             
-            # FLUTTER card
-            f.write("FLUTTER {0:8d}{1:8s}{2:8d}{3:8d}{4:8d}{5:8s}{6:8d}{7:8s}\n".format(
-                200,    # SID
-                "PK",   # METHOD - PK method
-                1,      # DENS - density ratio FLFACT ID
-                2,      # MACH - Mach number FLFACT ID
-                3,      # RFREQ - reduced frequency FLFACT ID
-                "L",    # IMETH - L for loop closure
-                5,      # NVALUE - number of eigenvalues
-                "0.001" # EPS - convergence tolerance
+            # FLUTTER card - proper 8-character field formatting
+            # Format: FLUTTER, SID, METHOD, DENS, MACH, RFREQ, IMETH, NVALUE, EPS
+            f.write("FLUTTER {0:8d}{1:8s}{2:8d}{3:8d}{4:8d}{5:8s}{6:8d}{7:8.4f}\n".format(
+                200,    # Field 2: SID
+                "PK",   # Field 3: METHOD - PK method
+                1,      # Field 4: DENS - density ratio FLFACT ID
+                2,      # Field 5: MACH - Mach number FLFACT ID
+                3,      # Field 6: RFREQ - reduced frequency FLFACT ID
+                "L",    # Field 7: IMETH - L for loop closure
+                5,      # Field 8: NVALUE - number of eigenvalues
+                0.001   # Field 9: EPS - convergence tolerance (as float, not string)
             ))
             
             # FLFACT cards - lists of values
