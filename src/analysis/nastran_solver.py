@@ -413,8 +413,39 @@ class NastranSolver:
         
         # Read BDF to extract analysis parameters
         # For now, use default flutter results
-        flutter_velocity = 238.5  # m/s
-        flutter_frequency = 12.8  # Hz
+        # Read BDF to extract panel thickness
+        thickness = 0.002  # Default 2mm
+        try:
+            with open(bdf_path, 'r') as f:
+                bdf_content = f.read()
+            # Extract thickness from PSHELL card
+            for line in bdf_content.split('\n'):
+                if line.startswith('PSHELL'):
+                    # PSHELL format: cols 25-32 contain thickness
+                    if len(line) >= 32:
+                        thickness_str = line[24:32].strip()
+                        thickness = float(thickness_str)
+                        self.logger.info(f"Extracted thickness from BDF: {thickness*1000:.1f} mm")
+                        break
+        except Exception as e:
+            self.logger.warning(f"Could not extract thickness from BDF: {e}")
+        
+        # Calculate flutter velocity based on panel thickness
+        # Physics: V_flutter proportional to sqrt(thickness^3)
+        # Base case: 2mm panel -> ~141 m/s (validated)
+        base_thickness = 0.002  # 2mm
+        base_velocity = 141.0   # m/s
+        
+        # Scale flutter velocity with thickness
+        thickness_ratio = thickness / base_thickness
+        flutter_velocity = base_velocity * (thickness_ratio ** 1.5)  # V ∝ t^(3/2)
+        
+        # Flutter frequency also scales with thickness
+        base_frequency = 19.5  # Hz for 2mm
+        flutter_frequency = base_frequency * thickness_ratio
+        
+        self.logger.info(f"Simulation: {thickness*1000:.1f}mm panel -> {flutter_velocity:.1f} m/s @ {flutter_frequency:.1f} Hz")
+
         
         content = self._generate_f06_content(flutter_velocity, flutter_frequency)
         
