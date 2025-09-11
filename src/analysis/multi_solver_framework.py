@@ -46,6 +46,189 @@ class ComparisonResult:
     recommended_result: FlutterResult
     confidence_level: str
 
+class MultiSolverFramework:
+    """Main framework for multi-solver flutter analysis"""
+    
+    def __init__(self):
+        """Initialize the multi-solver framework"""
+        self.solvers = {
+            SolverMethod.PISTON_THEORY: PistonTheorySolver,
+            SolverMethod.DOUBLET_LATTICE: DoubletLatticeSolver,
+            SolverMethod.NASTRAN: NastranSolver
+        }
+        self.logger = logging.getLogger(__name__)
+    
+    def get_available_solvers(self) -> List[str]:
+        """Get list of available solver methods"""
+        return [method.value for method in SolverMethod if method != SolverMethod.AUTO]
+    
+    def recommend_solver(self, mach: float, altitude: float = 0, 
+                        panel_aspect_ratio: float = 1.0) -> SolverRecommendation:
+        """Recommend best solver based on flow conditions"""
+        
+        if mach > 1.2:
+            # Supersonic - Piston Theory is best
+            return SolverRecommendation(
+                recommended_method=SolverMethod.PISTON_THEORY,
+                confidence=0.95,
+                reason="Piston theory is most accurate for supersonic flow",
+                alternative_methods=[SolverMethod.NASTRAN]
+            )
+        elif mach < 0.6:
+            # Subsonic - Doublet Lattice is best
+            return SolverRecommendation(
+                recommended_method=SolverMethod.DOUBLET_LATTICE,
+                confidence=0.90,
+                reason="Doublet lattice method is ideal for subsonic flow",
+                alternative_methods=[SolverMethod.NASTRAN, SolverMethod.PISTON_THEORY]
+            )
+        else:
+            # Transonic - NASTRAN is most reliable
+            return SolverRecommendation(
+                recommended_method=SolverMethod.NASTRAN,
+                confidence=0.85,
+                reason="NASTRAN provides best accuracy in transonic regime",
+                alternative_methods=[SolverMethod.DOUBLET_LATTICE]
+            )
+    
+    def run_analysis(self, method: Union[str, SolverMethod], config: Dict) -> FlutterResult:
+        """Run flutter analysis with specified method"""
+        
+        if isinstance(method, str):
+            method = SolverMethod(method)
+        
+        if method == SolverMethod.AUTO:
+            # Auto-select based on conditions
+            mach = config.get('flow_conditions', {}).get('mach', 0.6)
+            recommendation = self.recommend_solver(mach)
+            method = recommendation.recommended_method
+            self.logger.info(f"Auto-selected {method.value}: {recommendation.reason}")
+        
+        # Create and run appropriate solver
+        if method == SolverMethod.PISTON_THEORY:
+            return self._run_piston_theory(config)
+        elif method == SolverMethod.DOUBLET_LATTICE:
+            return self._run_doublet_lattice(config)
+        elif method == SolverMethod.NASTRAN:
+            return self._run_nastran(config)
+        else:
+            raise ValueError(f"Unknown solver method: {method}")
+    
+    def _run_piston_theory(self, config: Dict) -> FlutterResult:
+        """Run piston theory analysis"""
+        solver = PistonTheorySolver()
+        
+        # Extract parameters
+        panel = PanelProperties(
+            length=config['geometry']['length'],
+            width=config['geometry']['width'],
+            thickness=config['geometry']['thickness'],
+            elastic_modulus=config['material']['E'],
+            poisson_ratio=config['material']['nu'],
+            density=config['material']['rho'],
+            damping_ratio=config['material'].get('damping', 0.02)
+        )
+        
+        flow = FlowConditions(
+            mach=config['analysis']['mach'],
+            altitude=config['analysis'].get('altitude', 0),
+            air_density=config['analysis'].get('density', 1.225)
+        )
+        
+        return solver.solve_flutter(panel, flow)
+    
+    def _run_doublet_lattice(self, config: Dict) -> FlutterResult:
+        """Run doublet lattice analysis"""
+        solver = DoubletLatticeSolver()
+        
+        params = DLMParameters(
+            nx=config['geometry'].get('nx', 10),
+            ny=config['geometry'].get('ny', 5),
+            length=config['geometry']['length'],
+            width=config['geometry']['width']
+        )
+        
+        # Configure and run solver
+        solver.setup_geometry(params)
+        solver.set_flow_conditions(
+            mach=config['analysis']['mach'],
+            altitude=config['analysis'].get('altitude', 0)
+        )
+        
+        return solver.solve_flutter()
+    
+    def _run_nastran(self, config: Dict) -> FlutterResult:
+        """Run NASTRAN analysis"""
+        solver = NastranSolver()
+        
+        nastran_config = NastranConfig(
+            sol_sequence=145,  # Flutter analysis
+            output_format='f06'
+        )
+        
+        solver.configure(nastran_config)
+        return solver.solve(config)
+    
+    def compare_methods(self, config: Dict, 
+                        methods: Optional[List[SolverMethod]] = None) -> ComparisonResult:
+        """Compare results from multiple solver methods"""
+        
+        if methods is None:
+            # Use all applicable methods
+            mach = config.get('analysis', {}).get('mach', 0.6)
+            if mach > 1.2:
+                methods = [SolverMethod.PISTON_THEORY, SolverMethod.NASTRAN]
+            elif mach < 0.6:
+                methods = [SolverMethod.DOUBLET_LATTICE, SolverMethod.NASTRAN]
+            else:
+                methods = [SolverMethod.NASTRAN, SolverMethod.DOUBLET_LATTICE]
+        
+        results = {}
+        for method in methods:
+            try:
+                result = self.run_analysis(method, config)
+                results[method.value] = result
+            except Exception as e:
+                self.logger.warning(f"Failed to run {method.value}: {e}")
+        
+        # Extract and compare results
+        flutter_speeds = []
+        flutter_frequencies = []
+        
+        for method_name, result in results.items():
+            flutter_speeds.append(result.critical_velocity)
+            flutter_frequencies.append(result.critical_frequency)
+        
+        # Calculate relative differences
+        mean_speed = np.mean(flutter_speeds)
+        relative_diffs = {}
+        for method_name, speed in zip(results.keys(), flutter_speeds):
+            relative_diffs[method_name] = abs(speed - mean_speed) / mean_speed * 100
+        
+        # Determine confidence level
+        max_diff = max(relative_diffs.values())
+        if max_diff < 5:
+            confidence = "High - All methods agree within 5%"
+        elif max_diff < 10:
+            confidence = "Medium - Methods agree within 10%"
+        else:
+            confidence = "Low - Significant variation between methods"
+        
+        # Select recommended result (from most reliable method)
+        if SolverMethod.NASTRAN.value in results:
+            recommended = results[SolverMethod.NASTRAN.value]
+        else:
+            recommended = list(results.values())[0]
+        
+        return ComparisonResult(
+            methods=list(results.keys()),
+            flutter_speeds=flutter_speeds,
+            flutter_frequencies=flutter_frequencies,
+            relative_differences=relative_diffs,
+            recommended_result=recommended,
+            confidence_level=confidence
+        )
+
 class FlutterSolverFactory:
     """Factory for creating flutter analysis solvers"""
     
