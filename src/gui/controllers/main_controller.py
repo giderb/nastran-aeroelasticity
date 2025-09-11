@@ -25,6 +25,17 @@ class MainController:
     Manages user interactions, data validation, and analysis execution.
     """
     
+    
+    def convert_gui_to_solver_units(self, config):
+        """Convert GUI units (mm) to solver units (m)"""
+        converted = config.copy()
+        if 'geometry' in converted:
+            geom = converted['geometry']
+            geom['length'] = geom.get('length', 500) / 1000.0  # mm to m
+            geom['width'] = geom.get('width', 300) / 1000.0    # mm to m
+            geom['thickness'] = geom.get('thickness', 2) / 1000.0  # mm to m
+        return converted
+
     def __init__(self, view, model):
         self.view = view
         self.model = model
