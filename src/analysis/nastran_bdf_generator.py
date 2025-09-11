@@ -1,7 +1,7 @@
 """
 FIXED NASTRAN BDF Generator for Panel Flutter Analysis
 =======================================================
-Generates proper SOL 145 BDF files with all required cards.
+Generates proper SOL 145 BDF files with correct PSHELL thickness.
 """
 
 import numpy as np
@@ -31,7 +31,7 @@ class NastranBDFGenerator:
         self.cards.extend([
             "$ NASTRAN Panel Flutter Analysis - SOL 145",
             f"$ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            "$ Complete flutter analysis setup",
+            "$ Complete flutter analysis setup with thickness dependency",
             "$"
         ])
     
@@ -70,10 +70,10 @@ class NastranBDFGenerator:
         mat = config.get('material', {})
         analysis = config.get('analysis', {})
         
-        # Geometry
+        # Geometry - CRITICAL: thickness must be in meters
         length = geom.get('length', 0.5)
         width = geom.get('width', 0.3)
-        thickness = geom.get('thickness', 0.002)
+        thickness = geom.get('thickness', 0.002)  # CRITICAL PARAMETER
         nx = geom.get('nx', 10)
         ny = geom.get('ny', 5)
         
@@ -90,13 +90,16 @@ class NastranBDFGenerator:
         # Calculate air properties
         rho_air, a_sound = self._calculate_air_properties(altitude)
         
+        # Log thickness for debugging
+        print(f"    BDF Generation: thickness = {thickness*1000:.2f} mm ({thickness:.6f} m)")
+        
         # PARAM cards - Essential for flutter
         self._add_param_cards(damping)
         
         # AERO card - Reference conditions
-        self._add_aero_card(rho_air, a_sound)
+        self._add_aero_card(rho_air, a_sound, length)
         
-        # Material and property
+        # Material and property - CRITICAL FIX HERE
         self._add_material_property(E, nu, rho, thickness)
         
         # Structural mesh
@@ -119,7 +122,7 @@ class NastranBDFGenerator:
         self.cards.extend([
             "$ Parameter cards",
             "PARAM   GRDPNT  0",
-            "PARAM   WTMASS  0.00259",
+            "PARAM   WTMASS  0.00259",  # kg to N conversion
             f"PARAM   G       {damping:.3f}",
             "PARAM   KDAMP   -1",
             "PARAM   LMODES  10",
@@ -127,21 +130,41 @@ class NastranBDFGenerator:
             "$"
         ])
     
-    def _add_aero_card(self, rho_air, a_sound):
-        """Add AERO reference card"""
+    def _add_aero_card(self, rho_air, a_sound, ref_chord):
+        """Add AERO reference card with proper reference chord"""
+        # AERO card format:
+        # AERO ACSID VELOCITY REFC RHOREF SYMXZ SYMXY
         self.cards.extend([
-            "$ Aerodynamic reference",
-            f"AERO    0       1.0     {rho_air:.3E}{a_sound:.1f}1.0     1",
+            "$ Aerodynamic reference conditions",
+            f"AERO    0       1.0     {ref_chord:.3f}  {rho_air:.3E}1       1",
             "$"
         ])
     
     def _add_material_property(self, E, nu, rho, thickness):
-        """Add material and property cards"""
+        """Add material and property cards - CRITICAL FIX"""
+        
+        # MAT1 card - material properties
         self.cards.extend([
-            "$ Material",
+            "$ Material properties",
             f"MAT1    1       {E:.3E}        {nu:.3f} {rho:.1f}",
-            "$ Property", 
-            f"PSHELL  1       1       {thickness:.5f}1               1",
+            "$"
+        ])
+        
+        # PSHELL card - CRITICAL: proper format for thickness
+        # Format: PSHELL PID MID T MID2 12I/T**3 MID3 TS/T NSM
+        # Field 4 (T) is the thickness - MUST be properly formatted
+        
+        # Convert thickness to proper format
+        t_str = f"{thickness:.6f}"  # Use 6 decimal places for precision
+        
+        # IMPORTANT: PSHELL format requires 8-character fields
+        # PID=1, MID=1, T=thickness
+        pshell_line = "PSHELL  1       1       " + f"{thickness:<8.6f}"
+        
+        self.cards.extend([
+            "$ Shell property - thickness is CRITICAL for flutter",
+            f"$ Thickness = {thickness*1000:.2f} mm",
+            pshell_line,
             "$"
         ])
     
@@ -164,7 +187,7 @@ class NastranBDFGenerator:
                 )
                 grid_id += 1
         
-        self.cards.append("$ Elements")
+        self.cards.append("$ Shell elements")
         
         # CQUAD4 elements
         elem_id = 1
@@ -183,29 +206,40 @@ class NastranBDFGenerator:
     
     def _add_boundary_conditions(self, nx, ny):
         """Add boundary conditions"""
-        self.cards.append("$ Boundary conditions")
+        self.cards.append("$ Boundary conditions - Simply supported")
         
-        # Simply supported edges - fix Z displacement
-        # Left edge
+        # Fix Z displacement on all edges for simply supported
+        # Left edge (x=0)
         for j in range(ny + 1):
             grid_id = j + 1
             self.cards.append(f"SPC1    1       3       {grid_id}")
         
-        # Right edge
+        # Right edge (x=L)
         for j in range(ny + 1):
             grid_id = nx * (ny + 1) + j + 1
+            self.cards.append(f"SPC1    1       3       {grid_id}")
+        
+        # Bottom edge (y=0)
+        for i in range(1, nx):  # Skip corners
+            grid_id = i * (ny + 1) + 1
+            self.cards.append(f"SPC1    1       3       {grid_id}")
+        
+        # Top edge (y=W)
+        for i in range(1, nx):  # Skip corners
+            grid_id = i * (ny + 1) + ny + 1
             self.cards.append(f"SPC1    1       3       {grid_id}")
         
         self.cards.append("$")
     
     def _add_aerodynamic_model(self, length, width):
         """Add aerodynamic panels and splines"""
+        
+        # CAERO1 - Doublet lattice aerodynamic panel
         self.cards.extend([
-            "$ Aerodynamic panel",
-            "CAERO1  1001    1002    0       1       4       1       1",
-            "+       0.0     0.0     0.0     1.0     0.0     1.0     0.0     0.0",
-            f"+       {length:.4f}1.0     0.0     1.0     {width:.4f}1.0     0.0     0.0",
-            "$ Spline",
+            "$ Aerodynamic panel definition",
+            "CAERO1  1001    1002    0       1       10      5       1",
+            f"+       0.0     0.0     0.0     {length:.3f}  0.0     {width:.3f}   0.0     0.0",
+            "$ Spline to connect structure and aerodynamics",
             "SPLINE1 1       1001    1002    ALL",
             "$"
         ])
@@ -215,39 +249,47 @@ class NastranBDFGenerator:
         
         # Eigenvalue extraction
         self.cards.extend([
-            "$ Eigenvalues",
+            "$ Eigenvalue extraction",
             "EIGRL   10              0.1     100.0   10              MASS",
             "$"
         ])
         
-        # FLFACT cards
+        # FLFACT cards - parameter lists
         self.cards.extend([
             "$ Flutter parameters",
             "$ Mach numbers",
             "FLFACT  1       0.3     0.5     0.7     0.9     1.1     1.3     1.5",
             "$ Reduced frequencies",
             "FLFACT  2       0.001   0.01    0.1     0.3     0.5     1.0",
-            "$ Densities",
+            "$ Air density",
             f"FLFACT  3       {rho_air:.3E}",
-            "$ Velocities",
+            "$ Velocities (m/s)",
             "FLFACT  4       50.     100.    150.    200.    250.    300.    350.",
-            "FLFACT  4       400.    450.    500.",
+            "FLFACT  4       400.    450.    500.    550.    600.",
             "$"
         ])
         
-        # FLUTTER card
+        # FLUTTER card - PK method
         self.cards.extend([
-            "$ Flutter solution",
+            "$ Flutter solution - PK method",
             "FLUTTER 20      PK      1       2       3       L       4",
             "+       1.0-4   1.0-3",
             "$"
         ])
         
-        # MKAERO1 cards
+        # MKAERO1 - aerodynamic matrix interpolation
         self.cards.extend([
-            "$ Aerodynamic matrices",
-            "MKAERO1 0.0     0.3     0.5     0.7     0.9     1.1     1.3     1.5",
+            "$ Aerodynamic matrix generation",
+            "MKAERO1 0.3     0.5     0.7     0.9     1.1     1.3     1.5",
             "MKAERO1 0.001   0.01    0.1     0.3     0.5     1.0",
+            "$"
+        ])
+        
+        # TABDMP1 - Structural damping
+        self.cards.extend([
+            "$ Structural damping table",
+            "TABDMP1 30      CRIT",
+            "+       0.0     0.02    100.0   0.02    ENDT",
             "$"
         ])
     

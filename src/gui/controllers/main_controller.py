@@ -225,9 +225,9 @@ class MainController:
             
             # Convert GUI geometry to engine format
             geometry_config = GeometryConfig(
-                length=float(geometry.get('length', 0.5)),
-                width=float(geometry.get('width', 0.3)),
-                thickness=float(geometry.get('thickness', 0.002)),
+                length=float(geometry.get('length', 500)) / 1000.0,  # Convert mm to m
+                width=float(geometry.get('width', 300)) / 1000.0,  # Convert mm to m
+                thickness=float(geometry.get('thickness', 2)) / 1000.0,  # Convert mm to m
                 boundary_conditions=geometry.get('boundary_conditions', 'SSSS')
             )
             
