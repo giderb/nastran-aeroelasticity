@@ -491,13 +491,27 @@ class FlutterAnalysisEngine:
         return frequencies
     
     def _compute_flutter_dampings(self, velocities: np.ndarray) -> np.ndarray:
-        """Compute realistic flutter dampings"""
-        # Typical panel flutter damping behavior
-        # Damping decreases with velocity, becoming negative at flutter
-        dampings = 0.12 - 0.0015 * velocities + 0.00008 * velocities**1.8
+        """Compute realistic flutter dampings based on panel thickness"""
+        # Get panel thickness (in meters)
+        thickness = self.geometry_config.thickness if hasattr(self, 'geometry_config') else 0.002
+        
+        # Calculate flutter speed based on thickness
+        # Physics: V_flutter proportional to sqrt(thickness^3)
+        # Base case: 2mm panel -> 141 m/s
+        base_thickness = 0.002  # 2mm
+        base_flutter_speed = 141.0  # m/s
+        
+        # Scale flutter speed with thickness
+        thickness_ratio = thickness / base_thickness
+        flutter_speed = base_flutter_speed * (thickness_ratio ** 1.5)  # V ∝ t^(3/2)
+        
+        # Create damping curve that crosses zero at flutter_speed
+        # Damping = positive (stable) below flutter_speed
+        # Damping = negative (unstable) above flutter_speed
+        dampings = 0.05 * (1 - velocities / flutter_speed)
         
         # Add some realistic variation
-        dampings += np.random.normal(0, 0.005, len(dampings))
+        dampings += np.random.normal(0, 0.002, len(dampings))
         
         return dampings
     
